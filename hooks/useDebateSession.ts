@@ -20,13 +20,10 @@ export type DebateSession = {
   claims: Claim[];
   evidence: Evidence[];
   relations: Relation[];
-  selectedClaimId: string | null;
-  selectedClaim: Claim | null;
   claimById: ReadonlyMap<string, Claim>;
   evidenceById: ReadonlyMap<string, Evidence>;
   evidenceByClaimId: ReadonlyMap<string, readonly Evidence[]>;
   relationsByClaimId: ReadonlyMap<string, readonly Relation[]>;
-  selectClaim: (id: string | null) => void;
   mergeExtractResponse: (delta: ExtractResponse) => void;
   updateEvidenceVerification: (
     evidenceId: string,
@@ -36,19 +33,14 @@ export type DebateSession = {
 };
 
 /**
- * Holds the claim/evidence graph and inspector selection. Transcript and
- * verification queue state intentionally live in their dedicated hooks.
+ * Holds the claim/evidence graph. Transcript and verification queue state
+ * intentionally live in their dedicated hooks.
  */
 export function useDebateSession(): DebateSession {
   const [graph, setGraph] = useState<DebateGraphState>(EMPTY_DEBATE_GRAPH);
-  const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
 
   const mergeExtractResponse = useCallback((delta: ExtractResponse) => {
     setGraph((current) => mergeExtractDelta(current, delta));
-  }, []);
-
-  const selectClaim = useCallback((id: string | null) => {
-    setSelectedClaimId(id);
   }, []);
 
   const updateEvidenceVerification = useCallback(
@@ -91,10 +83,6 @@ export function useDebateSession(): DebateSession {
     return { claimById, evidenceById, evidenceByClaimId, relationsByClaimId };
   }, [graph]);
 
-  const selectedClaim = selectedClaimId
-    ? (indexes.claimById.get(selectedClaimId) ?? null)
-    : null;
-
   const momentum = useMomentum(
     graph.claims,
     graph.evidence,
@@ -103,10 +91,7 @@ export function useDebateSession(): DebateSession {
 
   return {
     ...graph,
-    selectedClaimId,
-    selectedClaim,
     ...indexes,
-    selectClaim,
     mergeExtractResponse,
     updateEvidenceVerification,
     momentum,

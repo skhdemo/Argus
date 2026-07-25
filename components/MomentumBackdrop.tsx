@@ -27,10 +27,10 @@ export function MomentumBackdrop({
 
   return (
     <section
-      className="momentum-backdrop relative flex min-h-[420px] flex-1 flex-col border border-border bg-surface"
+      className="momentum-backdrop relative flex min-h-[82svh] w-full flex-1 flex-col border-y border-rule"
       style={style}
     >
-      <div className="relative z-20 flex items-center justify-between gap-4 border-b border-border bg-[color-mix(in_srgb,var(--surface)_86%,transparent)] px-4 py-3 backdrop-blur-sm">
+      <div className="relative z-20 flex items-center justify-between gap-4 border-b border-rule px-6 py-3 md:px-12">
         <div className="min-w-0">
           <p className="readout truncate text-speaker-a">{speakerAName}</p>
           <p className="mt-1 font-display text-xl leading-none text-speaker-a">
@@ -57,9 +57,7 @@ export function MomentumBackdrop({
           </p>
         </div>
       </div>
-      <div className="relative z-10 flex-1 overflow-x-auto overflow-y-hidden">
-        {children}
-      </div>
+      <div className="relative z-10 flex-1">{children}</div>
     </section>
   );
 }

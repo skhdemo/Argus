@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 
-import { ClaimInspector } from "@/components/ClaimInspector";
 import { DebateGraph } from "@/components/DebateGraph";
 import { MomentumBackdrop } from "@/components/MomentumBackdrop";
 import { SummaryPanel } from "@/components/SummaryPanel";
@@ -49,19 +48,13 @@ export function DebateWorkspace() {
       ? "Listening · reading the argument"
       : "Listening"
     : "Ready";
-  const selectedEvidence = session.selectedClaimId
-    ? [...(session.evidenceByClaimId.get(session.selectedClaimId) ?? [])]
-    : [];
-  const selectedRelations = session.selectedClaimId
-    ? [...(session.relationsByClaimId.get(session.selectedClaimId) ?? [])]
-    : [];
 
   return (
     <section
       id="debate"
-      className="min-h-[100svh] border-t border-rule px-6 py-12 md:px-12 md:py-16"
+      className="min-h-[100svh] border-t border-rule py-12 md:py-16"
     >
-      <div className="mx-auto w-full max-w-6xl">
+      <div className="mx-auto w-full max-w-6xl px-6 md:px-12">
         <div className="flex items-baseline justify-between border-b border-rule pb-3">
           <span className="readout">The motion</span>
           <span className="readout flex items-center gap-2">
@@ -126,54 +119,45 @@ export function DebateWorkspace() {
             )}
           </div>
         ) : null}
+      </div>
 
-        <div className="mt-16">
-          <div className="mb-3 flex items-baseline justify-between">
-            <p className="readout">Live flow sheet</p>
-            <p className="readout">
-              {session.claims.length} claim
-              {session.claims.length === 1 ? "" : "s"} ·{" "}
-              {session.evidence.length} evidence
-            </p>
-          </div>
-          <MomentumBackdrop
-            momentum={session.momentum}
-            speakerAName={speakerAName}
-            speakerBName={speakerBName}
-          >
-            <DebateGraph
-              claims={session.claims}
-              evidence={session.evidence}
-              relations={session.relations}
-              selectedClaimId={session.selectedClaimId}
-              onSelectClaim={session.selectClaim}
-              speakerAName={speakerAName}
-              speakerBName={speakerBName}
-              onRenameA={setSpeakerAName}
-              onRenameB={setSpeakerBName}
-            />
-          </MomentumBackdrop>
+      {/* The flow sheet runs edge to edge — it is the floor, not a panel. */}
+      <div className="mt-16 w-full">
+        <div className="mb-3 flex items-baseline justify-between px-6 md:px-12">
+          <p className="readout">Live flow sheet</p>
+          <p className="readout">
+            {session.claims.length} claim
+            {session.claims.length === 1 ? "" : "s"} ·{" "}
+            {session.evidence.length} evidence
+          </p>
         </div>
-
-        <div className="mt-8 grid items-stretch gap-8 pb-20 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,.75fr)]">
-          <ClaimInspector
-            claim={session.selectedClaim}
-            evidence={selectedEvidence}
-            relations={selectedRelations}
-            claimsById={session.claimById}
-            queueState={verification.queueState}
-            onRetry={verification.retry}
-            onSelectClaim={session.selectClaim}
-            onClose={() => session.selectClaim(null)}
-          />
-          <SummaryPanel
+        <MomentumBackdrop
+          momentum={session.momentum}
+          speakerAName={speakerAName}
+          speakerBName={speakerBName}
+        >
+          <DebateGraph
             claims={session.claims}
             evidence={session.evidence}
             relations={session.relations}
+            queueState={verification.queueState}
+            onRetryEvidence={verification.retry}
             speakerAName={speakerAName}
             speakerBName={speakerBName}
+            onRenameA={setSpeakerAName}
+            onRenameB={setSpeakerBName}
           />
-        </div>
+        </MomentumBackdrop>
+      </div>
+
+      <div className="mx-auto mt-12 w-full max-w-6xl px-6 pb-20 md:px-12">
+        <SummaryPanel
+          claims={session.claims}
+          evidence={session.evidence}
+          relations={session.relations}
+          speakerAName={speakerAName}
+          speakerBName={speakerBName}
+        />
       </div>
     </section>
   );

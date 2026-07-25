@@ -9,11 +9,13 @@ import {
   useState,
 } from "react";
 
+import { ClaimHoverCard } from "@/components/debate/ClaimHoverCard";
 import {
   CLAIM_NATURE_LABEL,
   CLAIM_STATUS_COLOR,
   CLAIM_STATUS_LABEL,
 } from "@/components/debate/statusPresentation";
+import type { EvidenceVerificationQueueState } from "@/hooks/useEvidenceVerification";
 import { deriveClaimDisplayStatus } from "@/lib/debate/status";
 import type {
   Claim,
@@ -26,8 +28,8 @@ type DebateGraphProps = {
   claims: Claim[];
   evidence: Evidence[];
   relations: Relation[];
-  selectedClaimId: string | null;
-  onSelectClaim: (id: string) => void;
+  queueState: EvidenceVerificationQueueState;
+  onRetryEvidence: (evidenceId: string) => void;
   speakerAName: string;
   speakerBName: string;
   onRenameA: (name: string) => void;
@@ -57,20 +59,26 @@ function ClaimRow({
   claim,
   evidence,
   outgoingRelations,
+  linkedRelations,
+  claimsById,
+  queueState,
+  onRetryEvidence,
   index,
   side,
-  selected,
-  onSelect,
+  onHoverChange,
   setCardRef,
 }: {
   claim: Claim;
   evidence: Evidence[];
   outgoingRelations: Relation[];
+  linkedRelations: Relation[];
+  claimsById: ReadonlyMap<string, Claim>;
+  queueState: EvidenceVerificationQueueState;
+  onRetryEvidence: (evidenceId: string) => void;
   index: number;
   side: "A" | "B";
-  selected: boolean;
-  onSelect: () => void;
-  setCardRef: (node: HTMLButtonElement | null) => void;
+  onHoverChange: (hovered: boolean) => void;
+  setCardRef: (node: HTMLDivElement | null) => void;
 }) {
   const status = deriveClaimDisplayStatus(claim.id, evidence);
   const color = CLAIM_STATUS_COLOR[status];
@@ -81,22 +89,16 @@ function ClaimRow({
   const responseCount = outgoingRelations.length - counterCount;
 
   const card = (
-    <button
+    <article
       ref={setCardRef}
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className="group/card relative min-w-0 flex-1 border border-border border-l-2 bg-surface px-3 py-3 text-left shadow-[0_1px_2px_rgba(22,25,27,0.05)] transition-[box-shadow,background-color,transform] duration-200 hover:-translate-y-px hover:shadow-[0_8px_24px_rgba(22,25,27,0.11)]"
-      style={{
-        borderLeftColor: color,
-        background: selected
-          ? `color-mix(in srgb, ${color} 7%, var(--surface))`
-          : "var(--surface)",
-        boxShadow: selected
-          ? `0 0 0 2px color-mix(in srgb, ${color} 30%, transparent), 0 8px 24px rgba(22,25,27,.10)`
-          : undefined,
-      }}
-      title={claim.text}
+      tabIndex={0}
+      aria-label={`Claim ${tick(index)}: ${claim.text}`}
+      onMouseEnter={() => onHoverChange(true)}
+      onMouseLeave={() => onHoverChange(false)}
+      onFocus={() => onHoverChange(true)}
+      onBlur={() => onHoverChange(false)}
+      className="group/card relative min-w-0 max-w-[34rem] flex-1 border border-border border-l-2 bg-surface px-3 py-3 text-left shadow-[0_1px_2px_rgba(22,25,27,0.05)] transition-[box-shadow,transform] duration-200 hover:z-40 hover:-translate-y-px hover:shadow-[0_8px_24px_rgba(22,25,27,0.11)] focus-within:z-40 focus-visible:shadow-[0_8px_24px_rgba(22,25,27,0.11)]"
+      style={{ borderLeftColor: color }}
     >
       <span className="block text-[13px] font-medium leading-[1.45] text-foreground">
         {shortText(claim.text)}
@@ -130,7 +132,22 @@ function ClaimRow({
           )}
         </span>
       )}
-    </button>
+
+      <div
+        className={`absolute top-full z-50 w-[min(28rem,70vw)] pt-2 opacity-0 transition-opacity duration-150 pointer-events-none group-hover/card:pointer-events-auto group-hover/card:opacity-100 group-focus-within/card:pointer-events-auto group-focus-within/card:opacity-100 ${
+          isA ? "right-0" : "left-0"
+        }`}
+      >
+        <ClaimHoverCard
+          claim={claim}
+          evidence={evidence}
+          relations={linkedRelations}
+          claimsById={claimsById}
+          queueState={queueState}
+          onRetry={onRetryEvidence}
+        />
+      </div>
+    </article>
   );
 
   const marker = (
@@ -142,8 +159,13 @@ function ClaimRow({
     </div>
   );
   const leader = <div className="h-px w-5 shrink-0 bg-rule" />;
+  /** The auto margin keeps the capped card pinned to its speaker's rail. */
   const label = (
-    <span className="readout w-6 shrink-0 text-center tabular-nums">
+    <span
+      className={`readout w-6 shrink-0 text-center tabular-nums ${
+        isA ? "ml-auto" : "mr-auto"
+      }`}
+    >
       {tick(index)}
     </span>
   );
@@ -176,8 +198,8 @@ export function DebateGraph({
   claims,
   evidence,
   relations,
-  selectedClaimId,
-  onSelectClaim,
+  queueState,
+  onRetryEvidence,
   speakerAName,
   speakerBName,
   onRenameA,
@@ -187,9 +209,11 @@ export function DebateGraph({
   const originRef = useRef<HTMLDivElement>(null);
   const headARef = useRef<HTMLSpanElement>(null);
   const headBRef = useRef<HTMLSpanElement>(null);
-  const cardRefs = useRef(new Map<string, HTMLButtonElement>());
+  const cardRefs = useRef(new Map<string, HTMLDivElement>());
   const [fork, setFork] = useState<{ a: string; b: string } | null>(null);
   const [relationPaths, setRelationPaths] = useState<RelationPath[]>([]);
+  /** Hover is the only claim focus now — it drives detail and path emphasis. */
+  const [hoveredClaimId, setHoveredClaimId] = useState<string | null>(null);
 
   const claimById = useMemo(
     () => new Map(claims.map((claim) => [claim.id, claim])),
@@ -223,6 +247,17 @@ export function DebateGraph({
     }
     return index;
   }, [validRelations]);
+  const linkedByClaimId = useMemo(() => {
+    const index = new Map<string, Relation[]>();
+    for (const relation of validRelations) {
+      for (const claimId of new Set([relation.from, relation.to])) {
+        const linked = index.get(claimId);
+        if (linked) linked.push(relation);
+        else index.set(claimId, [relation]);
+      }
+    }
+    return index;
+  }, [validRelations]);
 
   const { claimsA, claimsB } = useMemo(() => {
     const sorted = [...claims].sort((x, y) => x.createdAt - y.createdAt);
@@ -234,7 +269,7 @@ export function DebateGraph({
   }, [claims]);
 
   const setCardRef = useCallback(
-    (id: string, node: HTMLButtonElement | null) => {
+    (id: string, node: HTMLDivElement | null) => {
       if (node) cardRefs.current.set(id, node);
       else cardRefs.current.delete(id);
     },
@@ -304,13 +339,12 @@ export function DebateGraph({
         id: relation.id,
         type: relation.type,
         emphasized:
-          selectedClaimId === relation.from ||
-          selectedClaimId === relation.to,
+          hoveredClaimId === relation.from || hoveredClaimId === relation.to,
         d: `M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`,
       });
     }
     setRelationPaths(nextPaths);
-  }, [claimById, selectedClaimId, validRelations]);
+  }, [claimById, hoveredClaimId, validRelations]);
 
   useLayoutEffect(() => {
     measure();
@@ -326,7 +360,10 @@ export function DebateGraph({
   }, [measure]);
 
   return (
-    <div ref={containerRef} className="relative min-w-[680px] px-5 py-8">
+    <div
+      ref={containerRef}
+      className="relative mx-auto w-full max-w-[1600px] px-6 py-12 md:px-12"
+    >
       <svg
         className="pointer-events-none absolute inset-0 z-[5] h-full w-full overflow-visible"
         aria-hidden
@@ -390,10 +427,15 @@ export function DebateGraph({
                 claim={claim}
                 evidence={evidenceByClaimId.get(claim.id) ?? []}
                 outgoingRelations={outgoingByClaimId.get(claim.id) ?? []}
+                linkedRelations={linkedByClaimId.get(claim.id) ?? []}
+                claimsById={claimById}
+                queueState={queueState}
+                onRetryEvidence={onRetryEvidence}
                 index={index}
                 side="A"
-                selected={selectedClaimId === claim.id}
-                onSelect={() => onSelectClaim(claim.id)}
+                onHoverChange={(hovered) =>
+                  setHoveredClaimId(hovered ? claim.id : null)
+                }
                 setCardRef={(node) => setCardRef(claim.id, node)}
               />
             ))}
@@ -426,10 +468,15 @@ export function DebateGraph({
                 claim={claim}
                 evidence={evidenceByClaimId.get(claim.id) ?? []}
                 outgoingRelations={outgoingByClaimId.get(claim.id) ?? []}
+                linkedRelations={linkedByClaimId.get(claim.id) ?? []}
+                claimsById={claimById}
+                queueState={queueState}
+                onRetryEvidence={onRetryEvidence}
                 index={index}
                 side="B"
-                selected={selectedClaimId === claim.id}
-                onSelect={() => onSelectClaim(claim.id)}
+                onHoverChange={(hovered) =>
+                  setHoveredClaimId(hovered ? claim.id : null)
+                }
                 setCardRef={(node) => setCardRef(claim.id, node)}
               />
             ))}
