@@ -8,16 +8,22 @@
  * quality requires it — do not enable by default (latency).
  */
 
-import type { SpeakerId } from "@/lib/types/debate";
-
 import {
   clampConfidence,
   heuristicInferSpeaker,
   HEURISTIC_CONFIDENCE_MAX,
 } from "@/lib/speaker/heuristics";
-import type { SpeakerInferInput, SpeakerInference } from "@/lib/speaker/types";
+import type {
+  SpeakerId,
+  SpeakerInferInput,
+  SpeakerInference,
+} from "@/lib/speaker/types";
 
-export type { SpeakerInferInput, SpeakerInference } from "@/lib/speaker/types";
+export type {
+  SpeakerId,
+  SpeakerInferInput,
+  SpeakerInference,
+} from "@/lib/speaker/types";
 export {
   heuristicInferSpeaker,
   hasDisagreementCue,

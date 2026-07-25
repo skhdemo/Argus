@@ -1,0 +1,30 @@
+{
+  "claims": [
+    {
+      "id": "c_fixturemessi01",
+      "text": "Messi is better",
+      "speaker": "A",
+      "nature": "argument",
+      "createdAt": 1700000003000
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev_fixturemessi01",
+      "text": "He won a World Cup and two Copa Américas",
+      "speaker": "A",
+      "supportsClaimIds": ["c_fixturemessi01"],
+      "kind": "factual_claim",
+      "verification": {
+        "status": "pending",
+        "relevance": "pending",
+        "sources": []
+      },
+      "createdAt": 1700000003000
+    }
+  ],
+  "relations": [],
+  "inferredSpeaker": "A",
+  "speakerConfidence": 0.75,
+  "notes": "fixture: messi-evidence (one claim + one evidence; no evidence-as-claim)"
+}

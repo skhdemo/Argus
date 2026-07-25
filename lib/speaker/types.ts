@@ -1,4 +1,10 @@
-import type { SpeakerId } from "@/lib/types/debate";
+/**
+ * Speaker inference types (BE2).
+ * Includes UNKNOWN for extract-time diarization / soft attribution.
+ * Aligns with claim–evidence v2 SpeakerId (parent contract may lag briefly).
+ */
+
+export type SpeakerId = "A" | "B" | "UNKNOWN";
 
 export type SpeakerInference = {
   speaker: SpeakerId;
