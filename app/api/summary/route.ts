@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getGenAI, hasGeminiApiKey } from "@/lib/gemini/client";
 import { GEMINI_MODEL } from "@/lib/gemini/models";
+import { computeDebateScore, toDebateScorePayload } from "@/lib/score/debateScore";
 import {
   SUMMARY_SYSTEM_PROMPT,
   buildSummaryUserPrompt,
@@ -12,11 +13,15 @@ import {
   summaryRequestSchema,
 } from "@/lib/summary/schema";
 import {
+  buildFallbackNarrative,
   computeSummaryStats,
   resolveMostContestedClaimId,
 } from "@/lib/summary/stats";
-import { computeDebateScore, toDebateScorePayload } from "@/lib/score/debateScore";
-import type { ApiErrorBody, DebateScoreSnapshot, SummaryResponse } from "@/lib/types/debate";
+import type {
+  ApiErrorBody,
+  DebateScoreSnapshot,
+  SummaryResponse,
+} from "@/lib/types/debate";
 
 export const runtime = "nodejs";
 
@@ -31,11 +36,17 @@ function errorJson(
 export async function GET() {
   return NextResponse.json({
     ok: true,
+    purpose: "summary v2",
     model: GEMINI_MODEL,
     hasApiKey: hasGeminiApiKey(),
   });
 }
 
+/**
+ * POST { claims, evidence, relations } → SummaryResponse.
+ * Stats + debateScore are always deterministic.
+ * Narrative uses Gemini when available; falls back on failure (never drops score/stats).
+ */
 export async function POST(
   request: Request,
 ): Promise<NextResponse<SummaryResponse | ApiErrorBody>> {
@@ -58,36 +69,37 @@ export async function POST(
     });
   }
 
-  const { claims, edges } = parsed.data;
-  const stats = computeSummaryStats(claims, edges);
-  // Phase F will pass real evidence/relations; keep score v2 callable until then.
+  const { claims, evidence, relations } = parsed.data;
+  const stats = computeSummaryStats(claims, evidence, relations);
   const debateScore: DebateScoreSnapshot = toDebateScorePayload(
-    computeDebateScore(claims, [], []),
+    computeDebateScore(claims, evidence, relations),
   );
 
+  const fallback: SummaryResponse = {
+    ...stats,
+    narrative: buildFallbackNarrative(stats),
+    debateScore,
+  };
+
   if (claims.length === 0) {
-    return NextResponse.json({
-      ...stats,
-      mostContestedClaimId: null,
-      narrative:
-        "No claims extracted yet. Structural summary will appear after the debate graph has content.",
-      debateScore,
-    });
+    return NextResponse.json(fallback);
   }
 
   if (!hasGeminiApiKey()) {
-    return errorJson(500, {
-      error:
-        "GEMINI_API_KEY is missing. Copy .env.example to .env.local and set the key.",
-      code: "MISSING_KEY",
+    console.info("[api/summary]", {
+      path: "fallback",
+      reason: "MISSING_KEY",
+      claimCount: stats.claimCount,
+      evidenceCount: stats.evidenceCount,
     });
+    return NextResponse.json(fallback);
   }
 
   try {
     const ai = getGenAI();
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
-      contents: buildSummaryUserPrompt(claims, edges),
+      contents: buildSummaryUserPrompt(claims, evidence, relations),
       config: {
         systemInstruction: SUMMARY_SYSTEM_PROMPT,
         responseMimeType: "application/json",
@@ -98,52 +110,45 @@ export async function POST(
 
     const text = response.text?.trim();
     if (!text) {
-      return errorJson(502, {
-        error: "Empty response from Gemini",
-        code: "UPSTREAM",
-      });
+      console.info("[api/summary]", { path: "fallback", reason: "empty" });
+      return NextResponse.json(fallback);
     }
 
     let raw: unknown;
     try {
       raw = JSON.parse(text);
     } catch {
-      return errorJson(502, {
-        error: "Gemini returned non-JSON content",
-        code: "PARSE",
-      });
+      console.info("[api/summary]", { path: "fallback", reason: "PARSE" });
+      return NextResponse.json(fallback);
     }
 
     const modelParsed = modelSummarySchema.safeParse(raw);
     if (!modelParsed.success) {
-      return errorJson(502, {
-        error: `Gemini JSON failed schema: ${modelParsed.error.issues
-          .map((i) => i.message)
-          .join("; ")}`,
-        code: "PARSE",
-      });
+      console.info("[api/summary]", { path: "fallback", reason: "schema" });
+      return NextResponse.json(fallback);
     }
 
+    const narrative = modelParsed.data.narrative.trim();
     const result: SummaryResponse = {
-      claimCount: stats.claimCount,
-      evidenceCount: stats.evidenceCount,
-      unsupportedCount: stats.unsupportedCount,
+      ...stats,
       mostContestedClaimId: resolveMostContestedClaimId(
         modelParsed.data.mostContestedClaimId,
         claims,
         stats.mostContestedClaimId,
       ),
-      narrative: modelParsed.data.narrative.trim(),
+      narrative: narrative.length > 0 ? narrative : fallback.narrative,
       debateScore,
     };
 
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Upstream Gemini error";
-    if (message.includes("GEMINI_API_KEY")) {
-      return errorJson(500, { error: message, code: "MISSING_KEY" });
-    }
-    console.error("[api/summary]", message);
-    return errorJson(502, { error: message, code: "UPSTREAM" });
+    console.error("[api/summary]", {
+      path: "fallback",
+      reason: "UPSTREAM",
+      error: message,
+    });
+    // Never fail the route for narrative errors — stats + score still land.
+    return NextResponse.json(fallback);
   }
 }
