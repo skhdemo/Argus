@@ -12,7 +12,19 @@ import {
   modelExtractJsonSchema,
   modelExtractSchema,
 } from "@/lib/extract/schema";
+import {
+  SPEAKER_INSTRUCTIONS,
+  buildSpeakerUserPromptSlice,
+  inferSpeaker,
+} from "@/lib/speaker/infer";
 import type { ApiErrorBody, ExtractResponse } from "@/lib/types/debate";
+
+/** Optional demo field until a contract/* PR adds pauseMs to ExtractRequest. */
+function readOptionalPauseMs(body: unknown): number | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const value = (body as { pauseMs?: unknown }).pauseMs;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
 
 export const runtime = "nodejs";
 
@@ -62,14 +74,25 @@ export async function POST(
   }
 
   const body = parsed.data;
+  const pauseMs = readOptionalPauseMs(json);
 
   try {
     const ai = getGenAI();
+    const userPrompt = [
+      buildExtractUserPrompt(body),
+      "",
+      buildSpeakerUserPromptSlice({
+        lastSpeaker: body.inferredSpeaker ?? null,
+        pauseMs,
+      }),
+    ].join("\n");
+
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
-      contents: buildExtractUserPrompt(body),
+      contents: userPrompt,
       config: {
-        systemInstruction: EXTRACT_SYSTEM_PROMPT,
+        // One-call path (B3.2.3 default): extract + speaker instructions together.
+        systemInstruction: `${EXTRACT_SYSTEM_PROMPT}\n\n${SPEAKER_INSTRUCTIONS}`,
         responseMimeType: "application/json",
         responseJsonSchema: modelExtractJsonSchema,
         temperature: 0.2,
@@ -104,11 +127,32 @@ export async function POST(
       });
     }
 
-    // BE2: replace stub with inferSpeaker(...) from lib/speaker/infer.ts
-    const result = normalizeModelExtract(modelParsed.data, {
+    const normalized = normalizeModelExtract(modelParsed.data, {
       inferredSpeaker: body.inferredSpeaker,
-      stubSpeaker: true,
+      stubSpeaker: false,
     });
+
+    const inferred = inferSpeaker({
+      text: body.text,
+      transcriptWindow: body.transcriptWindow,
+      lastSpeaker: body.inferredSpeaker ?? null,
+      pauseMs,
+      modelSpeaker: normalized.inferredSpeaker,
+      modelConfidence: normalized.speakerConfidence,
+    });
+
+    const result: ExtractResponse = {
+      ...normalized,
+      inferredSpeaker: inferred.speaker,
+      speakerConfidence: inferred.confidence,
+      claims: normalized.claims.map((claim) => ({
+        ...claim,
+        // Align UNKNOWN claim speakers with chunk inference; keep explicit A/B.
+        speaker:
+          claim.speaker === "UNKNOWN" ? inferred.speaker : claim.speaker,
+        speakerConfidence: claim.speakerConfidence ?? inferred.confidence,
+      })),
+    };
 
     return NextResponse.json(result);
   } catch (err) {

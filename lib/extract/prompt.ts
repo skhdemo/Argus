@@ -1,8 +1,10 @@
 /**
  * Extraction system + user prompt builders (BE1).
  *
- * Decision (B3.2.3 TBD with BE2): speaker fields are stubbed by the route today.
- * If latency allows a single call, fold speaker instructions here later.
+ * Decision (B3.2.3 — BE2 proposal, awaiting BE1 ack): ONE Gemini call.
+ * Route appends `SPEAKER_INSTRUCTIONS` from `lib/speaker/prompt.ts` to the
+ * system instruction. Prefer keeping speaker prose in lib/speaker/* so BE2
+ * can iterate without rewriting the core extract rules above.
  */
 
 import type { Claim, Edge, ExtractRequest } from "@/lib/types/debate";
