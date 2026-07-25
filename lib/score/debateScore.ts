@@ -211,7 +211,7 @@ export function computeDebateScore(
     const toClaim = byId.get(relation.to);
     if (!fromClaim || !isScoredSpeaker(fromClaim.speaker)) continue;
 
-    let credit = RELATION_CREDIT[relation.type];
+    const credit = RELATION_CREDIT[relation.type];
     let rebuttalBonus = 0;
 
     const targetUnsupported =

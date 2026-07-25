@@ -79,9 +79,8 @@ export function normalizeModelExtract(
     idByClient.set(c.clientId, id);
     knownClaimIds.add(id);
 
-    let nature = c.nature;
-    // Targetless counterarguments are normalized after relations resolve;
-    // provisional keep nature until then.
+    // Targetless counterarguments are normalized after relations resolve.
+    const nature = c.nature;
     const base: Claim = {
       id,
       text: c.text.trim(),
