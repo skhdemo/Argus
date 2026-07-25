@@ -14,18 +14,21 @@ export function DebateWorkspace() {
   const [topic, setTopic] = useState("");
   const [speakerAName, setSpeakerAName] = useState("Speaker A");
   const [speakerBName, setSpeakerBName] = useState("Speaker B");
-  const [lastSpeaker, setLastSpeaker] = useState<SpeakerId | null>(null);
+  /** Fallback if diarization hasn't spoken yet — extract may still label speakers. */
+  const [extractSpeaker, setExtractSpeaker] = useState<SpeakerId | null>(null);
+
+  const speakerHint = speech.lastSpeaker ?? extractSpeaker;
 
   const extraction = useExtractionLoop({
     isListening: speech.isListening,
     transcriptFinal: speech.transcriptFinal,
     existingClaims: session.claims,
     existingEdges: session.edges,
-    inferredSpeaker: lastSpeaker,
+    inferredSpeaker: speakerHint,
     onDelta: (delta) => {
       session.mergeExtractResponse(delta);
       if (delta.inferredSpeaker && delta.inferredSpeaker !== "UNKNOWN") {
-        setLastSpeaker(delta.inferredSpeaker);
+        setExtractSpeaker(delta.inferredSpeaker);
       }
     },
   });
@@ -61,7 +64,9 @@ export function DebateWorkspace() {
 
           <div className="flex flex-col items-center gap-2">
             {!speech.supported ? (
-              <p className="text-sm text-danger">Needs desktop Chrome + mic.</p>
+              <p className="text-sm text-danger">
+                Needs desktop Chrome with microphone (MediaRecorder).
+              </p>
             ) : (
               <button
                 type="button"
