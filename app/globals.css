@@ -1,23 +1,31 @@
 @import "tailwindcss";
 
+/*
+ * Soft contemporary board — cool mist field, slate ink, aqua accent.
+ * Claim hues stay PRD-aligned but slightly softened.
+ */
+
 :root {
-  --background: #f6f7f8;
-  --foreground: #141414;
-  --muted: #66707a;
-  --border: #d7dcde;
+  --background: #eef3f6;
+  --foreground: #12202b;
+  --muted: #5f7382;
+  --border: #c9d7e0;
   --surface: #ffffff;
-  --line: #2a2a2a;
+  --line: #8aa0b0;
 
-  --accent: #1a1a1a;
-  --danger: #b42318;
+  --accent: #0e8f8b;
+  --accent-soft: #d7f3f1;
+  --danger: #d64545;
 
-  --claim-supported: #2f9e44;
-  --claim-assumption: #e67700;
-  --claim-needs-evidence: #e03131;
-  --claim-counterargument: #1c7ed6;
+  --claim-supported: #2f9e6b;
+  --claim-assumption: #d8891a;
+  --claim-needs-evidence: #e04b4b;
+  --claim-counterargument: #3b82f6;
 
-  --speaker-a: #1c7ed6;
-  --speaker-b: #e03131;
+  --speaker-a: #2f6fed;
+  --speaker-b: #e35d6a;
+
+  --radius: 14px;
 }
 
 @theme inline {
@@ -28,6 +36,7 @@
   --color-surface: var(--surface);
   --color-line: var(--line);
   --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
   --color-claim-supported: var(--claim-supported);
   --color-claim-assumption: var(--claim-assumption);
@@ -38,15 +47,19 @@
   --font-sans: var(--font-body);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
+  --radius-soft: var(--radius);
 }
 
 html,
 body {
-  background: var(--background);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #dff4f2 0%, transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, #e4ecff 0%, transparent 50%),
+    var(--background);
   color: var(--foreground);
   font-family: var(--font-body), sans-serif;
 }
 
 ::selection {
-  background: #cfe3ff;
+  background: color-mix(in srgb, var(--accent) 28%, white);
 }

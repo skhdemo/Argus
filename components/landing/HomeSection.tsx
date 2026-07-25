@@ -2,13 +2,13 @@
 
 export function HomeSection() {
   return (
-    <section className="flex min-h-[100svh] flex-col justify-between px-8 py-10 md:px-16">
-      <p className="font-display text-5xl tracking-tight text-foreground md:text-7xl">
+    <section className="flex min-h-[100svh] flex-col justify-between px-8 py-12 md:px-16">
+      <p className="font-display text-5xl font-semibold tracking-tight text-foreground md:text-6xl">
         Argus
       </p>
 
-      <div className="max-w-xl space-y-8">
-        <h1 className="font-display text-3xl leading-tight tracking-tight md:text-5xl">
+      <div className="max-w-xl space-y-7">
+        <h1 className="font-display text-3xl font-semibold leading-[1.15] tracking-tight text-foreground md:text-5xl">
           Map a live debate as it happens.
         </h1>
         <p className="text-lg leading-relaxed text-muted">
@@ -17,7 +17,7 @@ export function HomeSection() {
         </p>
         <a
           href="#debate"
-          className="inline-block border border-line bg-foreground px-6 py-3 text-sm font-medium text-background"
+          className="inline-flex rounded-soft bg-accent px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_88%,black)]"
         >
           Start debating
         </a>

@@ -33,15 +33,15 @@ export function DebateWorkspace() {
   return (
     <section
       id="debate"
-      className="min-h-[100svh] border-t border-border bg-background px-4 py-10 md:px-10"
+      className="min-h-[100svh] border-t border-border/80 px-4 py-12 md:px-10"
     >
       <div className="mx-auto flex w-full max-w-6xl flex-col items-center">
-        <div className="mb-8 flex w-full flex-col items-center gap-5">
+        <div className="mb-10 flex w-full flex-col items-center gap-5">
           <input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder="Debate topic"
-            className="w-full max-w-md border-b border-line bg-transparent px-2 py-2 text-center font-display text-2xl tracking-tight outline-none placeholder:text-muted md:text-3xl"
+            className="w-full max-w-lg rounded-soft border border-transparent bg-surface/70 px-4 py-3 text-center font-display text-2xl font-semibold tracking-tight text-foreground outline-none ring-1 ring-border placeholder:text-muted focus:ring-2 focus:ring-accent md:text-3xl"
           />
 
           <div className="flex flex-wrap items-center justify-center gap-3">
@@ -49,13 +49,13 @@ export function DebateWorkspace() {
               value={speakerAName}
               onChange={(e) => setSpeakerAName(e.target.value)}
               aria-label="Rename speaker A"
-              className="w-36 border border-border bg-surface px-2 py-1.5 text-center text-sm outline-none focus:border-speaker-a"
+              className="w-40 rounded-soft border border-border bg-surface px-3 py-2 text-center text-sm font-medium outline-none focus:border-speaker-a"
             />
             <input
               value={speakerBName}
               onChange={(e) => setSpeakerBName(e.target.value)}
               aria-label="Rename speaker B"
-              className="w-36 border border-border bg-surface px-2 py-1.5 text-center text-sm outline-none focus:border-speaker-b"
+              className="w-40 rounded-soft border border-border bg-surface px-3 py-2 text-center text-sm font-medium outline-none focus:border-speaker-b"
             />
           </div>
 
@@ -66,12 +66,16 @@ export function DebateWorkspace() {
               <button
                 type="button"
                 onClick={speech.isListening ? speech.stop : speech.start}
-                className="border border-line bg-foreground px-8 py-2.5 text-sm font-medium text-background"
+                className={
+                  speech.isListening
+                    ? "rounded-soft bg-danger px-8 py-2.5 text-sm font-semibold text-white"
+                    : "rounded-soft bg-accent px-8 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                }
               >
                 {speech.isListening ? "Stop" : "Start"}
               </button>
             )}
-            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+            <p className="text-xs font-medium tracking-wide text-muted">
               {speech.isListening
                 ? extraction.status === "pending"
                   ? "Listening · extracting"
@@ -93,7 +97,6 @@ export function DebateWorkspace() {
           </div>
         </div>
 
-        {/* Full-width graph; grows downward — page scrolls with the branches */}
         <div className="w-full">
           <DebateGraph
             claims={session.claims}
