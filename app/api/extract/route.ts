@@ -11,24 +11,18 @@ import {
   extractRequestSchema,
   modelExtractJsonSchema,
   modelExtractSchema,
+  type ApiErrorBody,
+  type ExtractResponse,
 } from "@/lib/extract/schema";
 import {
   FALLACY_INSTRUCTIONS,
-  annotateClaimsSoftFlags,
+  annotateClaimFallacies,
 } from "@/lib/fallacy/detect";
 import {
   SPEAKER_INSTRUCTIONS,
   buildSpeakerUserPromptSlice,
   inferSpeaker,
 } from "@/lib/speaker/infer";
-import type { ApiErrorBody, ExtractResponse } from "@/lib/types/debate";
-
-/** Optional demo field until a contract/* PR adds pauseMs to ExtractRequest. */
-function readOptionalPauseMs(body: unknown): number | undefined {
-  if (!body || typeof body !== "object") return undefined;
-  const value = (body as { pauseMs?: unknown }).pauseMs;
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
 
 export const runtime = "nodejs";
 
@@ -51,6 +45,7 @@ export async function GET() {
 export async function POST(
   request: Request,
 ): Promise<NextResponse<ExtractResponse | ApiErrorBody>> {
+  const started = Date.now();
   let json: unknown;
   try {
     json = await request.json();
@@ -78,7 +73,6 @@ export async function POST(
   }
 
   const body = parsed.data;
-  const pauseMs = readOptionalPauseMs(json);
 
   try {
     const ai = getGenAI();
@@ -87,7 +81,7 @@ export async function POST(
       "",
       buildSpeakerUserPromptSlice({
         lastSpeaker: body.inferredSpeaker ?? null,
-        pauseMs,
+        pauseMs: body.pauseMs,
       }),
     ].join("\n");
 
@@ -95,7 +89,8 @@ export async function POST(
       model: GEMINI_MODEL,
       contents: userPrompt,
       config: {
-        // One-call path: extract + speaker + soft fallacy/unsupported flags.
+        // One-call path: extract + speaker + soft fallacy tags.
+        // No Google Search / grounding on the extract hot path.
         systemInstruction: [
           EXTRACT_SYSTEM_PROMPT,
           SPEAKER_INSTRUCTIONS,
@@ -135,35 +130,50 @@ export async function POST(
       });
     }
 
-    const normalized = normalizeModelExtract(modelParsed.data, {
-      inferredSpeaker: body.inferredSpeaker,
-      stubSpeaker: false,
-    });
-
     const inferred = inferSpeaker({
       text: body.text,
       transcriptWindow: body.transcriptWindow,
       lastSpeaker: body.inferredSpeaker ?? null,
-      pauseMs,
-      modelSpeaker: normalized.inferredSpeaker,
-      modelConfidence: normalized.speakerConfidence,
+      pauseMs: body.pauseMs,
+      modelSpeaker: modelParsed.data.inferredSpeaker,
+      modelConfidence: modelParsed.data.speakerConfidence,
     });
 
-    const withSpeaker = normalized.claims.map((claim) => ({
+    const normalized = normalizeModelExtract(modelParsed.data, {
+      existingClaims: body.existingClaims,
+      existingEvidence: body.existingEvidence,
+      existingRelations: body.existingRelations,
+      inferredSpeaker: inferred.speaker,
+    });
+
+    // Align UNKNOWN claim/evidence speakers with chunk inference; keep explicit A/B.
+    const withSpeakerClaims = normalized.claims.map((claim) => ({
       ...claim,
-      // Align UNKNOWN claim speakers with chunk inference; keep explicit A/B.
       speaker: claim.speaker === "UNKNOWN" ? inferred.speaker : claim.speaker,
       speakerConfidence: claim.speakerConfidence ?? inferred.confidence,
     }));
 
-    const claims = annotateClaimsSoftFlags({
-      claims: withSpeaker,
-      edges: normalized.edges,
-      existingEdges: body.existingEdges,
+    const withSpeakerEvidence = normalized.evidence.map((item) => ({
+      ...item,
+      speaker: item.speaker === "UNKNOWN" ? inferred.speaker : item.speaker,
+    }));
+
+    const modelByClientId = new Map(
+      modelParsed.data.claims.map((c) => {
+        const soft: { fallacies?: typeof c.fallacies } = {};
+        if (c.fallacies !== undefined) soft.fallacies = c.fallacies;
+        return [c.clientId, soft] as const;
+      }),
+    );
+
+    const claims = annotateClaimFallacies({
+      claims: withSpeakerClaims,
+      claimClientIds: modelParsed.data.claims.map((c) => c.clientId),
+      modelByClientId,
       modelSoft: modelParsed.data.claims.map((c) => {
-        const soft: { unsupported?: boolean; fallacies?: typeof c.fallacies } =
-          {};
-        if (c.unsupported !== undefined) soft.unsupported = c.unsupported;
+        const soft: { clientId: string; fallacies?: typeof c.fallacies } = {
+          clientId: c.clientId,
+        };
         if (c.fallacies !== undefined) soft.fallacies = c.fallacies;
         return soft;
       }),
@@ -171,10 +181,18 @@ export async function POST(
 
     const result: ExtractResponse = {
       ...normalized,
+      claims,
+      evidence: withSpeakerEvidence,
       inferredSpeaker: inferred.speaker,
       speakerConfidence: inferred.confidence,
-      claims,
     };
+
+    console.info("[api/extract]", {
+      latencyMs: Date.now() - started,
+      claims: result.claims.length,
+      evidence: result.evidence.length,
+      relations: result.relations.length,
+    });
 
     return NextResponse.json(result);
   } catch (err) {
@@ -182,7 +200,7 @@ export async function POST(
     if (message.includes("GEMINI_API_KEY")) {
       return errorJson(500, { error: message, code: "MISSING_KEY" });
     }
-    console.error("[api/extract]", message);
+    console.error("[api/extract]", { latencyMs: Date.now() - started, error: message });
     return errorJson(502, { error: message, code: "UPSTREAM" });
   }
 }

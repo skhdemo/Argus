@@ -1,6 +1,4 @@
-import type { SpeakerId } from "@/lib/types/debate";
-
-import type { SpeakerInference } from "@/lib/speaker/types";
+import type { SpeakerId, SpeakerInference } from "@/lib/speaker/types";
 
 /** Pause gap that may indicate a turn change (plan: >1.5s). */
 export const TURN_PAUSE_MS = 1500;
