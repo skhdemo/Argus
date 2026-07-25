@@ -4,19 +4,20 @@
       "id": "c_fixtureclaim03",
       "text": "Office collaboration produces higher-quality decisions than fully remote setups.",
       "speaker": "B",
-      "type": "counterargument",
+      "nature": "counterargument",
       "createdAt": 1700000002000
     }
   ],
-  "edges": [
+  "evidence": [],
+  "relations": [
     {
-      "id": "e_fixturecontradict01",
+      "id": "r_fixturecounters01",
       "from": "c_fixtureclaim03",
       "to": "c_fixtureclaim01",
-      "type": "contradicts"
+      "type": "counters"
     }
   ],
   "inferredSpeaker": "B",
   "speakerConfidence": 0.5,
-  "notes": "fixture: contradict-edge"
+  "notes": "fixture: contradict-edge (counterargument + counters relation)"
 }
