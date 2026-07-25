@@ -1,12 +1,21 @@
-import { useMemo } from "react";
+"use client";
 
-import type { Claim } from "@/lib/types/debate";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import type {
+  ApiErrorBody,
+  Claim,
+  Evidence,
+  Relation,
+  ScoreRequest,
+  ScoreResponse,
+} from "@/lib/types/debate";
 
 /**
  * Threshold at which momentum reads as decisive enough to show an explicit
  * "Speaker X is winning" callout, rather than just a background lean.
  */
-export const MOMENTUM_DECISIVE_THRESHOLD = 0.7;
+export const MOMENTUM_DECISIVE_THRESHOLD = 0.62;
 
 export type MomentumState = {
   /** Share of "momentum mass" held by speaker A, 0..1. */
@@ -19,6 +28,11 @@ export type MomentumState = {
   isDecisive: boolean;
 };
 
+export type UseMomentumResult = MomentumState & {
+  isLoading: boolean;
+  error: string | null;
+};
+
 const TIED: MomentumState = {
   ratioA: 0.5,
   ratioB: 0.5,
@@ -27,48 +41,106 @@ const TIED: MomentumState = {
   isDecisive: false,
 };
 
-/**
- * Placeholder scoring, computed purely client-side from data already in the
- * contract: supported claims count for a speaker, needs_evidence claims
- * count against them. This is a deliberate stopgap — see
- * docs/backend-argument-strength-proposal.md for the real, Gemini-scored
- * replacement. Swapping that in only requires changing the body of this
- * function; MomentumState and every consumer of it stay the same.
- */
-export function computeMomentum(claims: Claim[]): MomentumState {
-  let scoreA = 0;
-  let scoreB = 0;
-
-  for (const claim of claims) {
-    const delta =
-      claim.type === "supported" ? 1 : claim.type === "needs_evidence" ? -1 : 0;
-    if (claim.speaker === "A") scoreA += delta;
-    else if (claim.speaker === "B") scoreB += delta;
-  }
-
-  // Shift into non-negative space before normalizing so a negative-vs-less-
-  // negative matchup still yields a sensible ratio instead of going negative.
-  const floor = Math.min(scoreA, scoreB, 0);
-  const a = scoreA - floor;
-  const b = scoreB - floor;
-  const total = a + b;
-
-  if (total === 0) return TIED;
-
-  const ratioA = a / total;
-  const ratioB = 1 - ratioA;
-  const leaderShare = Math.max(ratioA, ratioB);
-  const leader = ratioA === ratioB ? "tied" : ratioA > ratioB ? "A" : "B";
-
+function toMomentumState(score: ScoreResponse): MomentumState {
   return {
-    ratioA,
-    ratioB,
-    leader,
-    leaderShare,
-    isDecisive: leaderShare > MOMENTUM_DECISIVE_THRESHOLD,
+    ratioA: score.ratioA,
+    ratioB: score.ratioB,
+    leader: score.leader,
+    leaderShare: score.leaderShare,
+    // The route owns threshold semantics; keep the exported constant aligned
+    // for UI copy and visual affordances only.
+    isDecisive: score.isDecisive,
   };
 }
 
-export function useMomentum(claims: Claim[]): MomentumState {
-  return useMemo(() => computeMomentum(claims), [claims]);
+type MomentumInput = {
+  claims: Claim[];
+  evidence: Evidence[];
+  relations: Relation[];
+};
+
+type ResolvedMomentum = {
+  input: MomentumInput | null;
+  score: MomentumState;
+  error: string | null;
+};
+
+export function useMomentum(
+  claims: Claim[],
+  evidence: Evidence[],
+  relations: Relation[],
+): UseMomentumResult {
+  const input = useMemo(
+    () => ({ claims, evidence, relations }),
+    [claims, evidence, relations],
+  );
+  const [resolved, setResolved] = useState<ResolvedMomentum>({
+    input: null,
+    score: TIED,
+    error: null,
+  });
+  const requestIdRef = useRef(0);
+  const isEmpty =
+    claims.length === 0 && evidence.length === 0 && relations.length === 0;
+
+  useEffect(() => {
+    if (isEmpty) return;
+
+    const controller = new AbortController();
+    const requestId = ++requestIdRef.current;
+    let active = true;
+
+    void (async () => {
+      try {
+        const body: ScoreRequest = { claims, evidence, relations };
+        const response = await fetch("/api/score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const errorBody = (await response.json()) as ApiErrorBody;
+          throw new Error(errorBody.error || "Scoring request failed");
+        }
+
+        const score = (await response.json()) as ScoreResponse;
+        if (!active || requestId !== requestIdRef.current) return;
+        setResolved({
+          input,
+          score: toMomentumState(score),
+          error: null,
+        });
+      } catch (error) {
+        if (
+          !active ||
+          controller.signal.aborted ||
+          requestId !== requestIdRef.current
+        ) {
+          return;
+        }
+        setResolved((current) => ({
+          input,
+          score: current.score,
+          error: error instanceof Error ? error.message : "Scoring request failed",
+        }));
+      }
+    })();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [claims, evidence, input, isEmpty, relations]);
+
+  if (isEmpty) {
+    return { ...TIED, isLoading: false, error: null };
+  }
+
+  return {
+    ...resolved.score,
+    isLoading: resolved.input !== input,
+    error: resolved.input === input ? resolved.error : null,
+  };
 }

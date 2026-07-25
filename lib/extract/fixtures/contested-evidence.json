@@ -1,0 +1,46 @@
+{
+  "claims": [
+    {
+      "id": "c_fixtureclaim04",
+      "text": "City congestion pricing cuts downtown traffic.",
+      "speaker": "A",
+      "nature": "argument",
+      "createdAt": 1700000004000
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev_fixturecontested01",
+      "text": "Downtown vehicle counts fell 30% in the first year.",
+      "speaker": "A",
+      "supportsClaimIds": ["c_fixtureclaim04"],
+      "kind": "statistic",
+      "verification": {
+        "status": "contested",
+        "relevance": "moderate",
+        "confidence": 0.55,
+        "summary": "Grounded sources disagree on the magnitude and attribution of the traffic change.",
+        "sources": [
+          {
+            "uri": "https://example.com/traffic-study",
+            "title": "Traffic study",
+            "domain": "example.com"
+          },
+          {
+            "uri": "https://example.org/counter-analysis",
+            "title": "Counter analysis",
+            "domain": "example.org"
+          }
+        ],
+        "webSearchQueries": ["congestion pricing downtown traffic 30%"],
+        "checkedAt": 1700000004500
+      },
+      "createdAt": 1700000004000,
+      "updatedAt": 1700000004500
+    }
+  ],
+  "relations": [],
+  "inferredSpeaker": "A",
+  "speakerConfidence": 0.6,
+  "notes": "fixture: contested-evidence"
+}

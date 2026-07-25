@@ -9,277 +9,440 @@ import {
   useState,
 } from "react";
 
-import type { Claim, ClaimType, Edge, EdgeType } from "@/lib/types/debate";
+import {
+  CLAIM_NATURE_LABEL,
+  CLAIM_STATUS_COLOR,
+  CLAIM_STATUS_LABEL,
+} from "@/components/debate/statusPresentation";
+import { deriveClaimDisplayStatus } from "@/lib/debate/status";
+import type {
+  Claim,
+  Evidence,
+  Relation,
+  RelationType,
+} from "@/lib/types/debate";
 
 type DebateGraphProps = {
   claims: Claim[];
-  edges: Edge[];
+  evidence: Evidence[];
+  relations: Relation[];
   selectedClaimId: string | null;
   onSelectClaim: (id: string) => void;
+  speakerAName: string;
+  speakerBName: string;
+  onRenameA: (name: string) => void;
+  onRenameB: (name: string) => void;
 };
 
-type Lane = "A" | "B" | "neutral";
-
-type Point = { x: number; y: number };
-
-const CLAIM_TYPE_COLOR_VAR: Record<ClaimType, string> = {
-  supported: "var(--claim-supported)",
-  assumption: "var(--claim-assumption)",
-  needs_evidence: "var(--claim-needs-evidence)",
-  counterargument: "var(--claim-counterargument)",
+type RelationPath = {
+  id: string;
+  d: string;
+  type: RelationType;
+  emphasized: boolean;
 };
 
-const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
-  supported: "Supported",
-  assumption: "Assumption",
-  needs_evidence: "Needs evidence",
-  counterargument: "Counterargument",
-};
+/** Half the node gutter — every dot centers here, so the rail lines up with them. */
+const RAIL_INSET = 6;
 
-// supports=solid, contradicts=dashed, responds_to=dotted — plan §4.4.
-const EDGE_DASH: Record<EdgeType, string | undefined> = {
-  supports: undefined,
-  contradicts: "6 4",
-  responds_to: "1 4",
-};
-
-function laneOf(claim: Claim): Lane {
-  if (claim.speaker === "A") return "A";
-  if (claim.speaker === "B") return "B";
-  return "neutral";
+function shortText(text: string, max = 126): string {
+  const value = text.trim();
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 }
 
-function anchorPoint(rect: DOMRect, lane: Lane): Point {
-  const y = rect.top + rect.height / 2;
-  if (lane === "A") return { x: rect.left + rect.width, y }; // exit right edge, toward center
-  if (lane === "B") return { x: rect.left, y }; // exit left edge, toward center
-  return { x: rect.left + rect.width / 2, y: rect.top + rect.height }; // neutral: bottom
+function tick(index: number): string {
+  return String(index + 1).padStart(2, "0");
 }
 
-function bezierPath(p1: Point, p2: Point): string {
-  const midX = (p1.x + p2.x) / 2;
-  return `M ${p1.x} ${p1.y} C ${midX} ${p1.y}, ${midX} ${p2.y}, ${p2.x} ${p2.y}`;
-}
-
-function NodeCard({
+function ClaimRow({
   claim,
-  lane,
-  isSelected,
-  onSelectClaim,
-  registerRef,
+  evidence,
+  outgoingRelations,
+  index,
+  side,
+  selected,
+  onSelect,
+  setCardRef,
 }: {
   claim: Claim;
-  lane: Lane;
-  isSelected: boolean;
-  onSelectClaim: (id: string) => void;
-  registerRef: (el: HTMLDivElement | null) => void;
+  evidence: Evidence[];
+  outgoingRelations: Relation[];
+  index: number;
+  side: "A" | "B";
+  selected: boolean;
+  onSelect: () => void;
+  setCardRef: (node: HTMLButtonElement | null) => void;
 }) {
-  const popoverSide =
-    lane === "A" ? "left-full ml-2" : lane === "B" ? "right-full mr-2" : "top-full mt-2";
+  const status = deriveClaimDisplayStatus(claim.id, evidence);
+  const color = CLAIM_STATUS_COLOR[status];
+  const isA = side === "A";
+  const counterCount = outgoingRelations.filter(
+    (relation) => relation.type === "counters",
+  ).length;
+  const responseCount = outgoingRelations.length - counterCount;
+
+  const card = (
+    <button
+      ref={setCardRef}
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className="group/card relative min-w-0 flex-1 border border-border border-l-2 bg-surface px-3 py-3 text-left shadow-[0_1px_2px_rgba(22,25,27,0.05)] transition-[box-shadow,background-color,transform] duration-200 hover:-translate-y-px hover:shadow-[0_8px_24px_rgba(22,25,27,0.11)]"
+      style={{
+        borderLeftColor: color,
+        background: selected
+          ? `color-mix(in srgb, ${color} 7%, var(--surface))`
+          : "var(--surface)",
+        boxShadow: selected
+          ? `0 0 0 2px color-mix(in srgb, ${color} 30%, transparent), 0 8px 24px rgba(22,25,27,.10)`
+          : undefined,
+      }}
+      title={claim.text}
+    >
+      <span className="block text-[13px] font-medium leading-[1.45] text-foreground">
+        {shortText(claim.text)}
+      </span>
+      <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="readout" style={{ color, letterSpacing: "0.12em" }}>
+          {CLAIM_STATUS_LABEL[status]}
+        </span>
+        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+          {CLAIM_NATURE_LABEL[claim.nature]}
+        </span>
+        <span
+          className="ml-auto inline-flex items-center gap-1 border border-border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-muted"
+          title={`${evidence.length} attached evidence item${evidence.length === 1 ? "" : "s"}`}
+        >
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+          {evidence.length} ev.
+        </span>
+      </span>
+      {outgoingRelations.length > 0 && (
+        <span className="mt-2 flex flex-wrap gap-1.5 border-t border-border pt-2">
+          {counterCount > 0 && (
+            <span className="relation-chip relation-chip-counters">
+              <span aria-hidden>×</span> {counterCount} counter
+            </span>
+          )}
+          {responseCount > 0 && (
+            <span className="relation-chip relation-chip-responds">
+              <span aria-hidden>↪</span> {responseCount} response
+            </span>
+          )}
+        </span>
+      )}
+    </button>
+  );
+
+  const marker = (
+    <div className="flex w-3 shrink-0 justify-center">
+      <span
+        className="h-[7px] w-[7px] rounded-full ring-4 ring-[var(--paper)]"
+        style={{ background: color }}
+      />
+    </div>
+  );
+  const leader = <div className="h-px w-5 shrink-0 bg-rule" />;
+  const label = (
+    <span className="readout w-6 shrink-0 text-center tabular-nums">
+      {tick(index)}
+    </span>
+  );
 
   return (
     <div
-      ref={registerRef}
-      onClick={() => onSelectClaim(claim.id)}
-      className={`group relative h-20 w-full cursor-pointer rounded-md border-2 bg-surface p-2 transition-shadow ${
-        isSelected ? "ring-2 ring-accent ring-offset-2 ring-offset-background" : ""
-      }`}
-      style={{ borderColor: CLAIM_TYPE_COLOR_VAR[claim.type] }}
+      className="claim-enter group/row flex items-center"
+      style={{ animationDelay: `${Math.min(index, 6) * 40}ms` }}
     >
-      <p className="line-clamp-3 text-xs leading-snug">{claim.text}</p>
-
-      {/* Hover popover — CSS-only via group-hover, no extra JS state. Always
-          opens toward the viewport center so it can't clip off a fixed
-          desktop viewport edge (A opens right, B opens left). */}
-      <div
-        className={`invisible absolute top-0 z-30 w-72 -translate-y-1/4 scale-95 rounded-md border border-border bg-surface p-3 opacity-0 shadow-lg transition-all duration-150 group-hover:visible group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100 ${popoverSide}`}
-      >
-        <p className="text-sm leading-relaxed">{claim.text}</p>
-        <p className="mt-2 text-xs text-muted">
-          Speaker {claim.speaker} · {CLAIM_TYPE_LABEL[claim.type]}
-        </p>
-        {claim.sourceExcerpt && (
-          <p className="mt-1 text-xs italic text-muted">&ldquo;{claim.sourceExcerpt}&rdquo;</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Lane({
-  lane,
-  label,
-  claims,
-  selectedClaimId,
-  onSelectClaim,
-  registerNodeRef,
-}: {
-  lane: "A" | "B";
-  label: string;
-  claims: Claim[];
-  selectedClaimId: string | null;
-  onSelectClaim: (id: string) => void;
-  registerNodeRef: (id: string) => (el: HTMLDivElement | null) => void;
-}) {
-  const speakerVar = lane === "A" ? "var(--speaker-a)" : "var(--speaker-b)";
-
-  return (
-    <div className="relative flex flex-1 flex-col items-center px-4 pt-4">
-      {claims.length > 0 && (
-        <div
-          aria-hidden
-          className="absolute bottom-4 left-1/2 top-12 w-px -translate-x-1/2"
-          style={{ background: speakerVar, opacity: 0.35 }}
-        />
+      {isA ? (
+        <>
+          {label}
+          {card}
+          {leader}
+          {marker}
+        </>
+      ) : (
+        <>
+          {marker}
+          {leader}
+          {card}
+          {label}
+        </>
       )}
-      <div
-        className="relative z-10 font-mono text-sm font-semibold"
-        style={{ color: speakerVar }}
-      >
-        {label}
-      </div>
-      <div className="relative z-10 mt-3 flex w-full max-w-[220px] flex-col gap-3">
-        {claims.map((claim) => (
-          <NodeCard
-            key={claim.id}
-            claim={claim}
-            lane={lane}
-            isSelected={selectedClaimId === claim.id}
-            onSelectClaim={onSelectClaim}
-            registerRef={registerNodeRef(claim.id)}
-          />
-        ))}
-      </div>
     </div>
   );
 }
 
 export function DebateGraph({
   claims,
-  edges,
+  evidence,
+  relations,
   selectedClaimId,
   onSelectClaim,
+  speakerAName,
+  speakerBName,
+  onRenameA,
+  onRenameB,
 }: DebateGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const nodeRefs = useRef(new Map<string, HTMLDivElement>());
-  const [nodeRects, setNodeRects] = useState<Map<string, DOMRect>>(new Map());
+  const originRef = useRef<HTMLDivElement>(null);
+  const headARef = useRef<HTMLSpanElement>(null);
+  const headBRef = useRef<HTMLSpanElement>(null);
+  const cardRefs = useRef(new Map<string, HTMLButtonElement>());
+  const [fork, setFork] = useState<{ a: string; b: string } | null>(null);
+  const [relationPaths, setRelationPaths] = useState<RelationPath[]>([]);
 
-  const registerNodeRef = useCallback(
-    (id: string) => (el: HTMLDivElement | null) => {
-      if (el) nodeRefs.current.set(id, el);
-      else nodeRefs.current.delete(id);
+  const claimById = useMemo(
+    () => new Map(claims.map((claim) => [claim.id, claim])),
+    [claims],
+  );
+  const evidenceByClaimId = useMemo(() => {
+    const index = new Map<string, Evidence[]>();
+    for (const item of evidence) {
+      for (const claimId of item.supportsClaimIds) {
+        const attached = index.get(claimId);
+        if (attached) attached.push(item);
+        else index.set(claimId, [item]);
+      }
+    }
+    return index;
+  }, [evidence]);
+  const validRelations = useMemo(
+    () =>
+      relations.filter(
+        (relation) =>
+          claimById.has(relation.from) && claimById.has(relation.to),
+      ),
+    [claimById, relations],
+  );
+  const outgoingByClaimId = useMemo(() => {
+    const index = new Map<string, Relation[]>();
+    for (const relation of validRelations) {
+      const outgoing = index.get(relation.from);
+      if (outgoing) outgoing.push(relation);
+      else index.set(relation.from, [relation]);
+    }
+    return index;
+  }, [validRelations]);
+
+  const { claimsA, claimsB } = useMemo(() => {
+    const sorted = [...claims].sort((x, y) => x.createdAt - y.createdAt);
+    return {
+      // UNKNOWN remains visible until diarization resolves it.
+      claimsA: sorted.filter((claim) => claim.speaker !== "B"),
+      claimsB: sorted.filter((claim) => claim.speaker === "B"),
+    };
+  }, [claims]);
+
+  const setCardRef = useCallback(
+    (id: string, node: HTMLButtonElement | null) => {
+      if (node) cardRefs.current.set(id, node);
+      else cardRefs.current.delete(id);
     },
     [],
   );
 
-  const recomputeRects = useCallback(() => {
+  const measure = useCallback(() => {
     const container = containerRef.current;
-    if (!container) return;
+    const origin = originRef.current;
+    const headA = headARef.current;
+    const headB = headBRef.current;
+    if (!container || !origin || !headA || !headB) return;
+
     const containerRect = container.getBoundingClientRect();
-    const next = new Map<string, DOMRect>();
-    for (const [id, el] of nodeRefs.current) {
-      const r = el.getBoundingClientRect();
-      next.set(
-        id,
-        new DOMRect(r.left - containerRect.left, r.top - containerRect.top, r.width, r.height),
-      );
+    const originRect = origin.getBoundingClientRect();
+    const headARect = headA.getBoundingClientRect();
+    const headBRect = headB.getBoundingClientRect();
+    const originPoint = {
+      x: originRect.left + originRect.width / 2 - containerRect.left,
+      y: originRect.bottom - containerRect.top,
+    };
+    const center = (rect: DOMRect) => ({
+      x: rect.left + rect.width / 2 - containerRect.left,
+      y: rect.top + rect.height / 2 - containerRect.top,
+    });
+    const forkCurve = (
+      from: { x: number; y: number },
+      to: { x: number; y: number },
+    ) => {
+      const midY = from.y + (to.y - from.y) * 0.55;
+      return `M ${from.x} ${from.y} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y}`;
+    };
+    setFork({
+      a: forkCurve(originPoint, center(headARect)),
+      b: forkCurve(originPoint, center(headBRect)),
+    });
+
+    const nextPaths: RelationPath[] = [];
+    for (const relation of validRelations) {
+      const fromNode = cardRefs.current.get(relation.from);
+      const toNode = cardRefs.current.get(relation.to);
+      const fromClaim = claimById.get(relation.from);
+      const toClaim = claimById.get(relation.to);
+      if (!fromNode || !toNode || !fromClaim || !toClaim) continue;
+
+      const fromRect = fromNode.getBoundingClientRect();
+      const toRect = toNode.getBoundingClientRect();
+      const fromSide = fromClaim.speaker === "B" ? "B" : "A";
+      const toSide = toClaim.speaker === "B" ? "B" : "A";
+      const from = {
+        x:
+          (fromSide === "A" ? fromRect.right : fromRect.left) -
+          containerRect.left,
+        y: fromRect.top + fromRect.height / 2 - containerRect.top,
+      };
+      const to = {
+        x:
+          (toSide === "A" ? toRect.right : toRect.left) -
+          containerRect.left,
+        y: toRect.top + toRect.height / 2 - containerRect.top,
+      };
+      const midX =
+        fromSide === toSide
+          ? containerRect.width / 2 + (fromSide === "A" ? -18 : 18)
+          : (from.x + to.x) / 2;
+      nextPaths.push({
+        id: relation.id,
+        type: relation.type,
+        emphasized:
+          selectedClaimId === relation.from ||
+          selectedClaimId === relation.to,
+        d: `M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`,
+      });
     }
-    setNodeRects(next);
-  }, []);
+    setRelationPaths(nextPaths);
+  }, [claimById, selectedClaimId, validRelations]);
 
   useLayoutEffect(() => {
-    recomputeRects();
-  }, [claims, edges, recomputeRects]);
+    measure();
+  }, [claimsA.length, claimsB.length, measure, speakerAName, speakerBName]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const ro = new ResizeObserver(() => recomputeRects());
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [recomputeRects]);
-
-  const claimsById = useMemo(() => new Map(claims.map((c) => [c.id, c])), [claims]);
-
-  const { claimsA, claimsB, claimsNeutral } = useMemo(() => {
-    const sorted = [...claims].sort((a, b) => a.createdAt - b.createdAt);
-    return {
-      claimsA: sorted.filter((c) => laneOf(c) === "A"),
-      claimsB: sorted.filter((c) => laneOf(c) === "B"),
-      claimsNeutral: sorted.filter((c) => laneOf(c) === "neutral"),
-    };
-  }, [claims]);
-
-  const isEmpty = claims.length === 0;
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    for (const card of cardRefs.current.values()) observer.observe(card);
+    return () => observer.disconnect();
+  }, [measure]);
 
   return (
-    <div ref={containerRef} className="relative flex h-full">
-      {isEmpty && (
-        <p className="absolute inset-0 z-20 flex items-center justify-center font-mono text-sm text-muted">
-          Waiting for first claim…
-        </p>
-      )}
-
-      <svg className="pointer-events-none absolute inset-0 z-0 h-full w-full" aria-hidden>
-        {edges.map((edge) => {
-          const fromClaim = claimsById.get(edge.from);
-          const toClaim = claimsById.get(edge.to);
-          const fromRect = nodeRects.get(edge.from);
-          const toRect = nodeRects.get(edge.to);
-          if (!fromClaim || !toClaim || !fromRect || !toRect) return null;
-
-          const p1 = anchorPoint(fromRect, laneOf(fromClaim));
-          const p2 = anchorPoint(toRect, laneOf(toClaim));
-
-          return (
-            <path
-              key={edge.id}
-              d={bezierPath(p1, p2)}
-              stroke="var(--muted)"
-              strokeOpacity={0.6}
-              strokeWidth={1.5}
-              strokeDasharray={EDGE_DASH[edge.type]}
-              fill="none"
-            />
-          );
-        })}
+    <div ref={containerRef} className="relative min-w-[680px] px-5 py-8">
+      <svg
+        className="pointer-events-none absolute inset-0 z-[5] h-full w-full overflow-visible"
+        aria-hidden
+      >
+        <defs>
+          <marker id="relation-arrow" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+            <path d="M0,0 L6,3.5 L0,7" fill="none" stroke="context-stroke" strokeWidth="1" />
+          </marker>
+        </defs>
+        {fork && (
+          <>
+            <path d={fork.a} fill="none" stroke="var(--speaker-a)" strokeWidth={1.25} strokeOpacity={0.5} />
+            <path d={fork.b} fill="none" stroke="var(--speaker-b)" strokeWidth={1.25} strokeOpacity={0.5} />
+          </>
+        )}
+        {relationPaths.map((path) => (
+          <path
+            key={path.id}
+            d={path.d}
+            fill="none"
+            markerEnd="url(#relation-arrow)"
+            className={`relation-path relation-path-${path.type}`}
+            strokeWidth={path.emphasized ? 2 : 1.25}
+            opacity={path.emphasized ? 1 : 0.72}
+          />
+        ))}
       </svg>
 
-      <Lane
-        lane="A"
-        label="A"
-        claims={claimsA}
-        selectedClaimId={selectedClaimId}
-        onSelectClaim={onSelectClaim}
-        registerNodeRef={registerNodeRef}
-      />
+      <div className="relative z-10 flex justify-center">
+        <div ref={originRef} className="h-[9px] w-[9px] rotate-45 bg-foreground" />
+      </div>
+      <div className="pointer-events-none absolute left-1/2 top-14 z-10 flex -translate-x-1/2 gap-3 whitespace-nowrap">
+        <span className="relation-key relation-key-counters">Counters</span>
+        <span className="relation-key relation-key-responds">Responds</span>
+      </div>
 
-      {claimsNeutral.length > 0 && (
-        <div className="relative flex w-24 flex-col items-center px-2 pt-4">
-          <div className="relative z-10 font-mono text-xs text-muted">?</div>
-          <div className="relative z-10 mt-3 flex w-full flex-col gap-3">
-            {claimsNeutral.map((claim) => (
-              <NodeCard
+      <div className="relative z-10 mt-20 grid grid-cols-2 gap-[clamp(5rem,18vw,17rem)]">
+        <div className="relative">
+          <div
+            aria-hidden
+            className="absolute bottom-0 top-3 w-px"
+            style={{ right: RAIL_INSET - 0.5, background: "var(--rule)" }}
+          />
+          <div className="relative flex items-center">
+            <input
+              value={speakerAName}
+              onChange={(event) => onRenameA(event.target.value)}
+              aria-label="Rename speaker A"
+              spellCheck={false}
+              className="min-w-0 flex-1 truncate rounded-sm bg-transparent pr-3 text-right font-display text-2xl leading-none text-speaker-a outline-none transition-colors hover:bg-[color-mix(in_srgb,var(--speaker-a)_7%,transparent)] focus:bg-[color-mix(in_srgb,var(--speaker-a)_7%,transparent)] md:text-[2rem]"
+            />
+            <div className="h-px w-5 shrink-0 bg-speaker-a opacity-50" />
+            <div className="flex w-3 shrink-0 justify-center">
+              <span ref={headARef} className="h-[9px] w-[9px] rounded-full bg-speaker-a ring-4 ring-[var(--paper)]" />
+            </div>
+          </div>
+          <div className="mt-9 flex flex-col gap-4">
+            {claimsA.map((claim, index) => (
+              <ClaimRow
                 key={claim.id}
                 claim={claim}
-                lane="neutral"
-                isSelected={selectedClaimId === claim.id}
-                onSelectClaim={onSelectClaim}
-                registerRef={registerNodeRef(claim.id)}
+                evidence={evidenceByClaimId.get(claim.id) ?? []}
+                outgoingRelations={outgoingByClaimId.get(claim.id) ?? []}
+                index={index}
+                side="A"
+                selected={selectedClaimId === claim.id}
+                onSelect={() => onSelectClaim(claim.id)}
+                setCardRef={(node) => setCardRef(claim.id, node)}
               />
             ))}
           </div>
         </div>
-      )}
 
-      <Lane
-        lane="B"
-        label="B"
-        claims={claimsB}
-        selectedClaimId={selectedClaimId}
-        onSelectClaim={onSelectClaim}
-        registerNodeRef={registerNodeRef}
-      />
+        <div className="relative">
+          <div
+            aria-hidden
+            className="absolute bottom-0 top-3 w-px"
+            style={{ left: RAIL_INSET - 0.5, background: "var(--rule)" }}
+          />
+          <div className="relative flex items-center">
+            <div className="flex w-3 shrink-0 justify-center">
+              <span ref={headBRef} className="h-[9px] w-[9px] rounded-full bg-speaker-b ring-4 ring-[var(--paper)]" />
+            </div>
+            <div className="h-px w-5 shrink-0 bg-speaker-b opacity-50" />
+            <input
+              value={speakerBName}
+              onChange={(event) => onRenameB(event.target.value)}
+              aria-label="Rename speaker B"
+              spellCheck={false}
+              className="min-w-0 flex-1 truncate rounded-sm bg-transparent pl-3 text-left font-display text-2xl leading-none text-speaker-b outline-none transition-colors hover:bg-[color-mix(in_srgb,var(--speaker-b)_7%,transparent)] focus:bg-[color-mix(in_srgb,var(--speaker-b)_7%,transparent)] md:text-[2rem]"
+            />
+          </div>
+          <div className="mt-9 flex flex-col gap-4">
+            {claimsB.map((claim, index) => (
+              <ClaimRow
+                key={claim.id}
+                claim={claim}
+                evidence={evidenceByClaimId.get(claim.id) ?? []}
+                outgoingRelations={outgoingByClaimId.get(claim.id) ?? []}
+                index={index}
+                side="B"
+                selected={selectedClaimId === claim.id}
+                onSelect={() => onSelectClaim(claim.id)}
+                setCardRef={(node) => setCardRef(claim.id, node)}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {claims.length === 0 && (
+        <p className="pointer-events-none relative z-10 mx-auto mt-20 max-w-xs text-center text-sm leading-relaxed text-muted">
+          Open the floor and start talking. Each claim is pinned to its
+          speaker&rsquo;s branch in the order it was made.
+        </p>
+      )}
     </div>
   );
 }

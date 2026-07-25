@@ -1,22 +1,30 @@
 {
   "claims": [
     {
-      "id": "c_fixtureclaim02",
+      "id": "c_fixtureclaim01",
+      "text": "Remote work increases productivity for knowledge workers.",
+      "speaker": "A",
+      "nature": "argument",
+      "createdAt": 1700000000000
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev_fixturesupport01",
       "text": "A 2023 meta-analysis found a 4% output gain for remote software teams.",
       "speaker": "A",
-      "type": "supported",
+      "supportsClaimIds": ["c_fixtureclaim01"],
+      "kind": "statistic",
+      "verification": {
+        "status": "pending",
+        "relevance": "pending",
+        "sources": []
+      },
       "createdAt": 1700000001000
     }
   ],
-  "edges": [
-    {
-      "id": "e_fixturesupport01",
-      "from": "c_fixtureclaim02",
-      "to": "c_fixtureclaim01",
-      "type": "supports"
-    }
-  ],
+  "relations": [],
   "inferredSpeaker": "A",
   "speakerConfidence": 0.55,
-  "notes": "fixture: support-edge (links to c_fixtureclaim01 from claim-only)"
+  "notes": "fixture: support-edge (claim + pending evidence; no support relation)"
 }

@@ -1,103 +1,270 @@
 @import "tailwindcss";
 
 /*
- * A0.1 baseline only — a dark "debate board" ground so the shell isn't a white
- * page. The full token system (spacing, surfaces, type scale, graph styling) is
- * Task B1.2.4; deliberately not front-run here.
+ * ARGUS — "the flow sheet as instrument"
  *
- * Claim-type colors below are NOT a design choice — they are fixed by
- * PRD.md §9 / IMPLEMENTATION_PLAN.md §4.4. Defined once here so DebateGraph
- * (B4.3) and ClaimInspector (B4.4) read from the same source.
+ * Competitive debaters track arguments by "flowing": one column per speaker,
+ * claims down the column, arrows across when one answers another. This UI is
+ * that artifact, drawn automatically.
+ *
+ * COLOR RULE (load-bearing — don't casually break it):
+ * Two channels used to collide here — speaker identity (blue/red) and claim
+ * evidence status. They're separated by
+ * SATURATION, not just hue:
+ *   - Evidence status is the ONLY fully saturated color on the page. It earns
+ *     the eye because it is the source-check state being rendered.
+ *   - Speaker identity is carried by position, a hairline rail, and a deep
+ *     desaturated tint. Never saturated, never competing.
+ * Adding a third saturated accent would break the whole hierarchy.
  */
 
 :root {
-  --background: #0b0f14;
-  --foreground: #e6edf3;
-  --muted: #8b98a5;
-  --border: #1f2933;
-  --surface: #11161d;
+  /* Ground — cool drafting paper. Not white, not cream, not near-black. */
+  --paper: #e9eae7;
+  --paper-deep: #dcdedb;
+  --surface: #fcfcfb;
 
-  /* Listening/active state — teal, kept clear of every claim color below
-     and of the generic purple/violet "AI product" palette. */
-  --accent: #2dd4bf;
-  --danger: #ff6b6b;
+  --foreground: #16191b;
+  --muted: #626b6f;
+  --faint: #8b9296;
+  --border: #cdd1cd;
+  --rule: #b9beba;
 
-  /* Claim types — PRD §4.4 */
-  --claim-supported: #3fb950;
-  --claim-assumption: #d29922;
-  --claim-needs-evidence: #f85149;
-  --claim-counterargument: #4a9eff;
+  /* Speaker identity — deep, desaturated. Position does most of the work. */
+  --speaker-a: #2b4c9b;
+  --speaker-b: #8e3b52;
 
-  /* Speaker identity (lane header, thread line, momentum background) — kept
-     as separate tokens from --claim-counterargument and --danger even
-     though the hues are close, so speaker-identity and claim-type/error
-     meanings can be retuned independently later. */
-  --speaker-a: #3b82f6;
-  --speaker-b: #ef4444;
+  /* Derived claim display status — never a claim truth verdict. */
+  --claim-unsupported: #c6542d;
+  --claim-pending-confirmation: #b07d12;
+  --claim-supported: #1b7f5a;
+  --claim-weak-support: #8a7027;
+  --claim-contested-evidence: #b3341c;
+  --claim-not-externally-verifiable: #687378;
+
+  /* Claim-to-claim syntax in the centre gutter. */
+  --relation-counters: #b44329;
+  --relation-responds-to: #4f6571;
+
+  /* Transitional aliases for non-v2 surfaces outside this slice. */
+  --claim-assumption: var(--claim-pending-confirmation);
+  --claim-needs-evidence: var(--claim-unsupported);
+  --claim-counterargument: var(--relation-responds-to);
+
+  /* Interface accent — graphite, deliberately non-chromatic so it never
+     competes with either semantic channel. */
+  --accent: #22282b;
+  --accent-soft: #d9ddd9;
+  --danger: #b3341c;
+
+  --line: var(--rule);
+  --radius: 4px;
 }
 
 @theme inline {
-  --color-background: var(--background);
+  --color-background: var(--paper);
+  --color-paper-deep: var(--paper-deep);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
+  --color-faint: var(--faint);
   --color-border: var(--border);
+  --color-rule: var(--rule);
   --color-surface: var(--surface);
+  --color-line: var(--line);
   --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
 
+  --color-claim-unsupported: var(--claim-unsupported);
+  --color-claim-pending-confirmation: var(--claim-pending-confirmation);
   --color-claim-supported: var(--claim-supported);
+  --color-claim-weak-support: var(--claim-weak-support);
+  --color-claim-contested-evidence: var(--claim-contested-evidence);
+  --color-claim-not-externally-verifiable: var(--claim-not-externally-verifiable);
   --color-claim-assumption: var(--claim-assumption);
   --color-claim-needs-evidence: var(--claim-needs-evidence);
   --color-claim-counterargument: var(--claim-counterargument);
-
   --color-speaker-a: var(--speaker-a);
   --color-speaker-b: var(--speaker-b);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+
+  --radius-soft: var(--radius);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+html,
 body {
-  background: var(--background);
+  background-color: var(--paper);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-body), system-ui, sans-serif;
 }
 
-/*
- * Momentum-driven background for the debate area. --momentum-a/--momentum-b
- * (0..1, set from hooks/useMomentum.ts) drive two blurred radial blobs whose
- * opacity/scale lean toward whichever speaker currently has more supported
- * claims. Pure CSS transition — no animation loop, no JS per frame.
- */
-.momentum-backdrop {
-  --momentum-a: 0.5;
-  --momentum-b: 0.5;
+/* Faint ruled grid — drafting paper, not decoration: it gives the axes and
+   tick marks something to measure against. */
+body {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--rule) 22%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--rule) 22%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 88px 88px;
+  background-position: center top;
 }
 
+::selection {
+  background: color-mix(in srgb, var(--speaker-a) 18%, white);
+}
+
+:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
+
+/* Utility label voice — used for eyebrows, ticks, status readouts. */
+.readout {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ── The signature: an argument being drawn ──────────────────────────────
+   Strokes draw themselves in on load, so the first thing you see is the
+   product's actual behaviour rather than a static picture of it. */
+@keyframes draw-in {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.draw {
+  stroke-dasharray: var(--len, 400);
+  stroke-dashoffset: var(--len, 400);
+  animation: draw-in 1.1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation-delay: var(--delay, 0s);
+}
+
+.settle {
+  opacity: 0;
+  animation: settle 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  animation-delay: var(--delay, 0s);
+}
+
+/* A claim entering the live board gets the same settle, so the demo and the
+   real thing share one motion language. */
+.claim-enter {
+  animation: settle 0.4s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+/* Momentum is ambient paper tint, not a dashboard chart. The hook keeps the
+   last good ratios while refreshing or after a score error. */
 .momentum-backdrop::before,
 .momentum-backdrop::after {
   content: "";
   position: absolute;
-  inset: -20%;
-  border-radius: 9999px;
-  filter: blur(80px);
+  inset-block: 0;
   pointer-events: none;
-  transition:
-    opacity 700ms ease,
-    transform 700ms ease;
-  z-index: 0;
+  opacity: 0.12;
 }
 
 .momentum-backdrop::before {
   left: 0;
-  background: var(--speaker-a);
-  opacity: calc(0.15 + var(--momentum-a) * 0.35);
-  transform: scale(calc(0.8 + var(--momentum-a) * 0.6));
+  width: calc(var(--momentum-a, 0.5) * 100%);
+  background: linear-gradient(90deg, var(--speaker-a), transparent);
 }
 
 .momentum-backdrop::after {
   right: 0;
-  background: var(--speaker-b);
-  opacity: calc(0.15 + var(--momentum-b) * 0.35);
-  transform: scale(calc(0.8 + var(--momentum-b) * 0.6));
+  width: calc(var(--momentum-b, 0.5) * 100%);
+  background: linear-gradient(270deg, var(--speaker-b), transparent);
+}
+
+.relation-path {
+  vector-effect: non-scaling-stroke;
+  marker-end: url("#relation-arrow");
+}
+
+.relation-path-counters {
+  stroke: var(--relation-counters);
+}
+
+.relation-path-responds_to {
+  stroke: var(--relation-responds-to);
+  stroke-dasharray: 4 4;
+}
+
+.relation-chip,
+.relation-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.relation-chip {
+  border: 1px solid currentColor;
+  padding: 2px 5px;
+}
+
+.relation-chip-counters,
+.relation-key-counters {
+  color: var(--relation-counters);
+}
+
+.relation-chip-responds,
+.relation-key-responds {
+  color: var(--relation-responds-to);
+}
+
+.relation-key::before {
+  content: "";
+  width: 1.25rem;
+  border-top: 1px solid currentColor;
+}
+
+.relation-key-responds::before {
+  border-top-style: dashed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .draw,
+  .settle,
+  .claim-enter {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+    transform: none;
+  }
 }

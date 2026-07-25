@@ -95,6 +95,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionResult {
   const lastSpeakerRef = useRef<SpeakerId | null>(null);
   const queueRef = useRef<Promise<void>>(Promise.resolve());
   const chunkPartsRef = useRef<Blob[]>([]);
+  const startRecorderLoopRef = useRef<() => void>(() => {});
 
   const stopTracks = useCallback(() => {
     recorderRef.current = null;
@@ -205,7 +206,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionResult {
         enqueueTranscribe(blob);
       }
       if (activeRef.current && streamRef.current) {
-        startRecorderLoop();
+        startRecorderLoopRef.current();
       } else {
         stopTracks();
       }
@@ -232,6 +233,10 @@ export function useSpeechRecognition(): UseSpeechRecognitionResult {
       stopTracks();
     }
   }, [enqueueTranscribe, stopTracks]);
+
+  useEffect(() => {
+    startRecorderLoopRef.current = startRecorderLoop;
+  }, [startRecorderLoop]);
 
   const start = useCallback(() => {
     if (!getClientSupported()) {

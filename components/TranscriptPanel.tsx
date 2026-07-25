@@ -34,24 +34,31 @@ export function TranscriptPanel({ chunks, interim }: TranscriptPanelProps) {
   const isEmpty = chunks.length === 0 && !interim;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-md border border-border bg-surface">
-      <div className="border-b border-border px-3 py-2 font-mono text-xs uppercase tracking-wide text-muted">
-        Transcript
+    <div className="flex h-full min-h-[220px] flex-col overflow-hidden border border-border bg-surface-elevated">
+      <div className="border-b border-border px-4 py-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
+          Live transcript
+        </p>
       </div>
-      <div className="flex-1 space-y-2 overflow-y-auto px-3 py-2">
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {isEmpty && (
-          <p className="text-sm text-muted">Waiting for speech…</p>
+          <p className="text-sm text-muted">
+            The room is quiet. Press start and begin the debate.
+          </p>
         )}
         {chunks.map((chunk, i) => {
           const label = speakerLabel(chunk);
           return (
-            <p key={`${chunk.timestamp}-${i}`} className="text-sm leading-relaxed">
-              <span className="mr-2 font-mono text-xs text-muted">
+            <p
+              key={`${chunk.timestamp}-${i}`}
+              className="text-sm leading-relaxed"
+            >
+              <span className="mr-2 font-mono text-[10px] text-muted">
                 {formatTime(chunk.timestamp)}
               </span>
               {label && (
                 <span
-                  className={`mr-2 font-mono text-xs ${
+                  className={`mr-2 font-mono text-[10px] ${
                     chunk.speakerConfidence !== undefined &&
                     chunk.speakerConfidence < 0.55
                       ? "text-muted opacity-70"
@@ -66,9 +73,7 @@ export function TranscriptPanel({ chunks, interim }: TranscriptPanelProps) {
           );
         })}
         {interim && (
-          <p className="text-sm italic leading-relaxed text-muted">
-            {interim}
-          </p>
+          <p className="text-sm italic leading-relaxed text-muted">{interim}</p>
         )}
         <div ref={bottomRef} />
       </div>

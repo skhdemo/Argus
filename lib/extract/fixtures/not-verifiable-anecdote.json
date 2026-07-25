@@ -1,0 +1,34 @@
+{
+  "claims": [
+    {
+      "id": "c_fixtureclaim05",
+      "text": "Morning routines improve focus.",
+      "speaker": "B",
+      "nature": "argument",
+      "createdAt": 1700000005000
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev_fixtureanecdote01",
+      "text": "I feel sharper on days when I journal before work.",
+      "speaker": "B",
+      "supportsClaimIds": ["c_fixtureclaim05"],
+      "kind": "anecdote",
+      "verification": {
+        "status": "not_verifiable",
+        "relevance": "weak",
+        "confidence": 0.4,
+        "summary": "Personal anecdote is not suitable for external web corroboration.",
+        "sources": [],
+        "checkedAt": 1700000005100
+      },
+      "createdAt": 1700000005000,
+      "updatedAt": 1700000005100
+    }
+  ],
+  "relations": [],
+  "inferredSpeaker": "B",
+  "speakerConfidence": 0.55,
+  "notes": "fixture: not-verifiable-anecdote"
+}

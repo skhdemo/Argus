@@ -2,6 +2,7 @@ type StartControlsProps = {
   isListening: boolean;
   supported: boolean;
   error: string | null;
+  extractStatus?: "idle" | "pending" | "error";
   onStart: () => void;
   onStop: () => void;
 };
@@ -14,7 +15,6 @@ function errorMessage(error: string): string {
     case "not-supported":
       return "Microphone recording isn't available in this browser.";
     default:
-      // Upstream Gemini / network errors can be long — keep readable.
       if (error.length > 160) return `${error.slice(0, 160)}…`;
       return error;
   }
@@ -24,41 +24,51 @@ export function StartControls({
   isListening,
   supported,
   error,
+  extractStatus = "idle",
   onStart,
   onStop,
 }: StartControlsProps) {
   if (!supported) {
     return (
-      <div className="rounded-md border border-border bg-surface px-4 py-3 text-sm text-danger">
-        Speech capture needs a desktop browser with microphone +{" "}
-        <strong className="text-foreground">MediaRecorder</strong> (Chrome
+      <p className="text-sm text-danger">
+        Needs a desktop browser with microphone + MediaRecorder (Chrome
         recommended). Gemini transcribes audio server-side.
-      </div>
+      </p>
     );
   }
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex flex-wrap items-center gap-4">
       <button
         type="button"
         onClick={isListening ? onStop : onStart}
-        className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium transition-colors hover:border-accent"
+        className={
+          isListening
+            ? "bg-danger px-5 py-2.5 font-display text-sm font-semibold text-white"
+            : "bg-accent px-5 py-2.5 font-display text-sm font-semibold text-white transition-colors hover:bg-accent-strong"
+        }
       >
-        {isListening ? "Stop" : "Start"}
+        {isListening ? "Stop session" : "Start listening"}
       </button>
 
-      <div className="flex items-center gap-2 text-sm text-muted">
+      <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.14em] text-muted">
         <span
           aria-hidden
-          className={`h-2 w-2 rounded-full ${
+          className={`h-2 w-2 ${
             isListening ? "animate-pulse bg-accent" : "bg-border"
           }`}
         />
-        {isListening ? "Listening (Gemini STT)" : "Not listening"}
+        {isListening ? "Listening" : "Standby"}
+        {extractStatus === "pending" && (
+          <span className="text-accent">· extracting</span>
+        )}
       </div>
 
       {error && (
-        <span className="max-w-md truncate text-sm text-danger" title={errorMessage(error)}>
+        <span
+          className="max-w-md truncate text-sm text-danger"
+          title={errorMessage(error)}
+        >
           {errorMessage(error)}
         </span>
       )}

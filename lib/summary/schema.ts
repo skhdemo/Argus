@@ -1,11 +1,16 @@
 import { z } from "zod";
 
-import { claimSchema, edgeSchema } from "@/lib/extract/schema";
+import {
+  claimSchema,
+  evidenceSchema,
+  relationSchema,
+} from "@/lib/extract/schema";
 import type { SummaryResponse } from "@/lib/types/debate";
 
 export const summaryRequestSchema = z.object({
   claims: z.array(claimSchema).default([]),
-  edges: z.array(edgeSchema).default([]),
+  evidence: z.array(evidenceSchema).default([]),
+  relations: z.array(relationSchema).default([]),
 });
 
 /** Model may return narrative + contested id; counts are computed server-side. */
