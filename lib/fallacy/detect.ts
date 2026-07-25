@@ -1,11 +1,13 @@
 /**
- * Fallacy + unsupported helpers (BE2).
+ * Fallacy helpers (BE2) — claim–evidence v2.
  *
- * Primary path: model fields from extract (one-call) via annotateClaimsFromModel.
- * Fallback: structural heuristics when the model omits soft flags.
+ * Primary path: model fallacies from extract (one-call) via annotateClaimFallacies.
+ * Fallback: structural cue heuristics when the model omits fallacy fields.
+ *
+ * Never infers support status, Claim nature changes, or Evidence verification.
  */
 
-import type { Claim, Edge, FallacyTag } from "@/lib/types/debate";
+import type { Claim, FallacyTag } from "@/lib/extract/schema";
 
 const FALLACY_TAGS: readonly FallacyTag[] = [
   "ad_hominem",
@@ -55,46 +57,46 @@ export function heuristicFallacies(text: string): FallacyTag[] {
   return hits;
 }
 
-export function claimLooksUnsupported(
-  claim: Claim,
-  edges: Edge[],
-  existingEdges: Edge[] = [],
-): boolean {
-  if (claim.unsupported) return true;
-  const all = [...existingEdges, ...edges];
-  const hasSupport = all.some(
-    (e) => e.type === "supports" && e.to === claim.id,
-  );
-  // Assumptions stay typed as assumption (distinct styling later) — do not
-  // auto-promote them to unsupported unless the model set the flag.
-  if (claim.type === "needs_evidence" && !hasSupport) return true;
-  return false;
-}
-
-export type ModelClaimSoftFields = {
+export type ModelClaimFallacyFields = {
   clientId: string;
-  unsupported?: boolean;
   fallacies?: FallacyTag[];
 };
 
 /**
- * Merge model soft fields onto normalized claims (by order / clientId map).
- * Applies structural unsupported + light cue heuristics as fallback.
+ * Merge model fallacy fields onto normalized claims via clientId map.
+ * Index is used only as a fallback when clientId is unknown.
+ * Does not touch support-related fields (nature, evidence, verification).
  */
-export function annotateClaimsSoftFlags(input: {
+export function annotateClaimFallacies(input: {
   claims: Claim[];
-  edges: Edge[];
-  existingEdges?: Edge[];
-  /** Parallel to model.claims before id remap; matched by index when lengths equal */
-  modelSoft?: Array<{ unsupported?: boolean; fallacies?: unknown }>;
+  /** clientId → soft fallacy payload from the model (preferred) */
+  modelByClientId?: Map<string, { fallacies?: unknown }>;
+  /**
+   * Parallel to model.claims before id remap; used only when
+   * modelByClientId is absent or misses an entry. Prefer clientId map.
+   */
+  modelSoft?: Array<{ clientId?: string; fallacies?: unknown }>;
+  /** clientId for each claim in `claims` (same order as normalize output) */
+  claimClientIds?: string[];
 }): Claim[] {
-  const existingEdges = input.existingEdges ?? [];
-
   return input.claims.map((claim, index) => {
-    const soft = input.modelSoft?.[index];
-    const modelProvidedFallacies = soft != null && "fallacies" in soft;
+    const clientId = input.claimClientIds?.[index];
+    const fromMap =
+      clientId && input.modelByClientId
+        ? input.modelByClientId.get(clientId)
+        : undefined;
+    const soft =
+      fromMap ??
+      (clientId
+        ? input.modelSoft?.find((s) => s.clientId === clientId)
+        : undefined) ??
+      input.modelSoft?.[index];
+
+    // Only treat fallacies as model-provided when the key is present (even if []).
+    const modelProvidedFallacies =
+      soft != null &&
+      Object.prototype.hasOwnProperty.call(soft, "fallacies");
     const fromModel = normalizeFallacies(soft?.fallacies);
-    // If the model included fallacies (even []), trust that and skip cues.
     const fallacies = modelProvidedFallacies
       ? fromModel
       : (() => {
@@ -102,20 +104,19 @@ export function annotateClaimsSoftFlags(input: {
           return heuristic.length > 0 ? heuristic : undefined;
         })();
 
-    const unsupported =
-      soft?.unsupported === true ||
-      claimLooksUnsupported(
-        { ...claim, unsupported: soft?.unsupported, fallacies },
-        input.edges,
-        existingEdges,
-      );
+    if (!fallacies?.length) {
+      if (claim.fallacies === undefined) return claim;
+      return { ...claim, fallacies: undefined };
+    }
 
     return {
       ...claim,
-      ...(unsupported ? { unsupported: true } : {}),
-      ...(fallacies?.length ? { fallacies } : {}),
+      fallacies,
     };
   });
 }
+
+/** @deprecated Use annotateClaimFallacies — kept as alias for route migration. */
+export const annotateClaimsSoftFlags = annotateClaimFallacies;
 
 export { FALLACY_INSTRUCTIONS } from "@/lib/fallacy/prompt";
