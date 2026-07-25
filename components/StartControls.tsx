@@ -14,7 +14,9 @@ function errorMessage(error: string): string {
     case "not-supported":
       return "Microphone recording isn't available in this browser.";
     default:
-      return `Speech capture error: ${error}`;
+      // Upstream Gemini / network errors can be long — keep readable.
+      if (error.length > 160) return `${error.slice(0, 160)}…`;
+      return error;
   }
 }
 
@@ -55,8 +57,10 @@ export function StartControls({
         {isListening ? "Listening (Gemini STT)" : "Not listening"}
       </div>
 
-      {error && !isListening && (
-        <span className="text-sm text-danger">{errorMessage(error)}</span>
+      {error && (
+        <span className="max-w-md truncate text-sm text-danger" title={errorMessage(error)}>
+          {errorMessage(error)}
+        </span>
       )}
     </div>
   );

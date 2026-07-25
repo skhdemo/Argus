@@ -205,7 +205,19 @@ export async function POST(
     if (message.includes("GEMINI_API_KEY")) {
       return errorJson(500, { error: message, code: "MISSING_KEY" });
     }
+    // Surface a short actionable hint for common Vertex misconfig.
+    let friendly = message;
+    if (
+      message.includes("aiplatform.googleapis.com") ||
+      message.includes("SERVICE_DISABLED") ||
+      message.includes("API_KEY_SERVICE_BLOCKED")
+    ) {
+      friendly =
+        "Gemini call hit Vertex/Agent Platform instead of AI Studio. " +
+        "Ensure GEMINI_API_KEY is from https://aistudio.google.com/apikey " +
+        "and unset GOOGLE_GENAI_USE_VERTEXAI (client forces vertexai:false).";
+    }
     console.error("[api/transcribe]", message);
-    return errorJson(502, { error: message, code: "UPSTREAM" });
+    return errorJson(502, { error: friendly, code: "UPSTREAM" });
   }
 }
