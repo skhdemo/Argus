@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:backend": "vitest run lib app/api",
+    "typecheck:backend": "tsc -p tsconfig.backend.json --noEmit",
+    "test:live:verify": "vitest run scripts/live-verify-smoke.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",
