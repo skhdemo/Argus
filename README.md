@@ -27,6 +27,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Web Speech A
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
@@ -34,8 +35,16 @@ Then open http://localhost:3000.
 
 Use **Chrome**. Allow microphone — speech capture is Web Speech API and Chrome-only.
 
-Once BE1 lands `.env.example` (Task A0.2), also run `cp .env.example .env.local` and add
-`GEMINI_API_KEY`. The frontend does not need it until it starts calling `/api/extract`.
+### Gemini API key
+
+1. Create a key in [Google AI Studio](https://aistudio.google.com/apikey).
+2. Put it in `.env.local` as `GEMINI_API_KEY=...` (see [`.env.example`](./.env.example)).
+3. **Never commit** `.env.local` or real keys. Only BE1 / whoever rotates the shared demo key should hold Production secrets.
+4. To rotate: generate a new key in AI Studio, update `.env.local` locally (and Vercel env later), revoke the old key.
+
+The frontend does not need the key until it calls `/api/extract` (server-side only).
+
+> **Vercel:** project + Production/Preview `GEMINI_API_KEY` wiring is postponed — do it before demo deploy if time allows.
 
 > Tailwind v4 has no `tailwind.config.ts` — design tokens live in
 > [`app/globals.css`](./app/globals.css) under `@theme`.
