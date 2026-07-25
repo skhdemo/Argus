@@ -9,10 +9,10 @@
  *
  * COLOR RULE (load-bearing — don't casually break it):
  * Two channels used to collide here — speaker identity (blue/red) and claim
- * type (green/yellow/red/blue, fixed by PRD §9). They're separated by
+ * evidence status. They're separated by
  * SATURATION, not just hue:
- *   - Claim type is the ONLY fully saturated color on the page. It earns the
- *     eye because it's the actual judgement being rendered.
+ *   - Evidence status is the ONLY fully saturated color on the page. It earns
+ *     the eye because it is the source-check state being rendered.
  *   - Speaker identity is carried by position, a hairline rail, and a deep
  *     desaturated tint. Never saturated, never competing.
  * Adding a third saturated accent would break the whole hierarchy.
@@ -34,11 +34,22 @@
   --speaker-a: #2b4c9b;
   --speaker-b: #8e3b52;
 
-  /* Claim type — the only saturated values. PRD §9 hue semantics preserved. */
+  /* Derived claim display status — never a claim truth verdict. */
+  --claim-unsupported: #c6542d;
+  --claim-pending-confirmation: #b07d12;
   --claim-supported: #1b7f5a;
-  --claim-assumption: #b07d12;
-  --claim-needs-evidence: #ce4b1e;
-  --claim-counterargument: #3e63dd;
+  --claim-weak-support: #8a7027;
+  --claim-contested-evidence: #b3341c;
+  --claim-not-externally-verifiable: #687378;
+
+  /* Claim-to-claim syntax in the centre gutter. */
+  --relation-counters: #b44329;
+  --relation-responds-to: #4f6571;
+
+  /* Transitional aliases for non-v2 surfaces outside this slice. */
+  --claim-assumption: var(--claim-pending-confirmation);
+  --claim-needs-evidence: var(--claim-unsupported);
+  --claim-counterargument: var(--relation-responds-to);
 
   /* Interface accent — graphite, deliberately non-chromatic so it never
      competes with either semantic channel. */
@@ -64,7 +75,12 @@
   --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
 
+  --color-claim-unsupported: var(--claim-unsupported);
+  --color-claim-pending-confirmation: var(--claim-pending-confirmation);
   --color-claim-supported: var(--claim-supported);
+  --color-claim-weak-support: var(--claim-weak-support);
+  --color-claim-contested-evidence: var(--claim-contested-evidence);
+  --color-claim-not-externally-verifiable: var(--claim-not-externally-verifiable);
   --color-claim-assumption: var(--claim-assumption);
   --color-claim-needs-evidence: var(--claim-needs-evidence);
   --color-claim-counterargument: var(--claim-counterargument);
@@ -163,6 +179,80 @@ body {
    real thing share one motion language. */
 .claim-enter {
   animation: settle 0.4s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+/* Momentum is ambient paper tint, not a dashboard chart. The hook keeps the
+   last good ratios while refreshing or after a score error. */
+.momentum-backdrop::before,
+.momentum-backdrop::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  pointer-events: none;
+  opacity: 0.12;
+}
+
+.momentum-backdrop::before {
+  left: 0;
+  width: calc(var(--momentum-a, 0.5) * 100%);
+  background: linear-gradient(90deg, var(--speaker-a), transparent);
+}
+
+.momentum-backdrop::after {
+  right: 0;
+  width: calc(var(--momentum-b, 0.5) * 100%);
+  background: linear-gradient(270deg, var(--speaker-b), transparent);
+}
+
+.relation-path {
+  vector-effect: non-scaling-stroke;
+  marker-end: url("#relation-arrow");
+}
+
+.relation-path-counters {
+  stroke: var(--relation-counters);
+}
+
+.relation-path-responds_to {
+  stroke: var(--relation-responds-to);
+  stroke-dasharray: 4 4;
+}
+
+.relation-chip,
+.relation-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.relation-chip {
+  border: 1px solid currentColor;
+  padding: 2px 5px;
+}
+
+.relation-chip-counters,
+.relation-key-counters {
+  color: var(--relation-counters);
+}
+
+.relation-chip-responds,
+.relation-key-responds {
+  color: var(--relation-responds-to);
+}
+
+.relation-key::before {
+  content: "";
+  width: 1.25rem;
+  border-top: 1px solid currentColor;
+}
+
+.relation-key-responds::before {
+  border-top-style: dashed;
 }
 
 @media (prefers-reduced-motion: reduce) {

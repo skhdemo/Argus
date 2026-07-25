@@ -2,8 +2,12 @@
 
 import { useState } from "react";
 
+import { ClaimInspector } from "@/components/ClaimInspector";
 import { DebateGraph } from "@/components/DebateGraph";
+import { MomentumBackdrop } from "@/components/MomentumBackdrop";
+import { SummaryPanel } from "@/components/SummaryPanel";
 import { useDebateSession } from "@/hooks/useDebateSession";
+import { useEvidenceVerification } from "@/hooks/useEvidenceVerification";
 import { useExtractionLoop } from "@/hooks/useExtractionLoop";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import type { SpeakerId } from "@/lib/types/debate";
@@ -19,11 +23,18 @@ export function DebateWorkspace() {
 
   const speakerHint = speech.lastSpeaker ?? extractSpeaker;
 
+  const verification = useEvidenceVerification({
+    evidence: session.evidence,
+    claims: session.claims,
+    updateEvidenceVerification: session.updateEvidenceVerification,
+  });
+
   const extraction = useExtractionLoop({
     isListening: speech.isListening,
     transcriptFinal: speech.transcriptFinal,
     existingClaims: session.claims,
-    existingEdges: session.edges,
+    existingEvidence: session.evidence,
+    existingRelations: session.relations,
     inferredSpeaker: speakerHint,
     onDelta: (delta) => {
       session.mergeExtractResponse(delta);
@@ -38,13 +49,19 @@ export function DebateWorkspace() {
       ? "Listening · reading the argument"
       : "Listening"
     : "Ready";
+  const selectedEvidence = session.selectedClaimId
+    ? [...(session.evidenceByClaimId.get(session.selectedClaimId) ?? [])]
+    : [];
+  const selectedRelations = session.selectedClaimId
+    ? [...(session.relationsByClaimId.get(session.selectedClaimId) ?? [])]
+    : [];
 
   return (
     <section
       id="debate"
       className="min-h-[100svh] border-t border-rule px-6 py-12 md:px-12 md:py-16"
     >
-      <div className="mx-auto w-full max-w-5xl">
+      <div className="mx-auto w-full max-w-6xl">
         <div className="flex items-baseline justify-between border-b border-rule pb-3">
           <span className="readout">The motion</span>
           <span className="readout flex items-center gap-2">
@@ -110,14 +127,51 @@ export function DebateWorkspace() {
           </div>
         ) : null}
 
-        <div className="mt-16 pb-20">
-          <DebateGraph
-            claims={session.claims}
-            edges={session.edges}
+        <div className="mt-16">
+          <div className="mb-3 flex items-baseline justify-between">
+            <p className="readout">Live flow sheet</p>
+            <p className="readout">
+              {session.claims.length} claim
+              {session.claims.length === 1 ? "" : "s"} ·{" "}
+              {session.evidence.length} evidence
+            </p>
+          </div>
+          <MomentumBackdrop
+            momentum={session.momentum}
             speakerAName={speakerAName}
             speakerBName={speakerBName}
-            onRenameA={setSpeakerAName}
-            onRenameB={setSpeakerBName}
+          >
+            <DebateGraph
+              claims={session.claims}
+              evidence={session.evidence}
+              relations={session.relations}
+              selectedClaimId={session.selectedClaimId}
+              onSelectClaim={session.selectClaim}
+              speakerAName={speakerAName}
+              speakerBName={speakerBName}
+              onRenameA={setSpeakerAName}
+              onRenameB={setSpeakerBName}
+            />
+          </MomentumBackdrop>
+        </div>
+
+        <div className="mt-8 grid items-stretch gap-8 pb-20 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,.75fr)]">
+          <ClaimInspector
+            claim={session.selectedClaim}
+            evidence={selectedEvidence}
+            relations={selectedRelations}
+            claimsById={session.claimById}
+            queueState={verification.queueState}
+            onRetry={verification.retry}
+            onSelectClaim={session.selectClaim}
+            onClose={() => session.selectClaim(null)}
+          />
+          <SummaryPanel
+            claims={session.claims}
+            evidence={session.evidence}
+            relations={session.relations}
+            speakerAName={speakerAName}
+            speakerBName={speakerBName}
           />
         </div>
       </div>

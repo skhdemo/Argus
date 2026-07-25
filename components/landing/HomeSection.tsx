@@ -1,40 +1,47 @@
 "use client";
 
-import type { ClaimType } from "@/lib/types/debate";
+import {
+  CLAIM_STATUS_COLOR,
+  CLAIM_STATUS_LABEL,
+} from "@/components/debate/statusPresentation";
+import type {
+  ClaimDisplayStatus,
+  ClaimNature,
+} from "@/lib/types/debate";
 
-const LEGEND: { type: ClaimType; label: string }[] = [
-  { type: "supported", label: "Supported" },
-  { type: "assumption", label: "Assumption" },
-  { type: "needs_evidence", label: "Needs evidence" },
-  { type: "counterargument", label: "Counterargument" },
+const LEGEND: ClaimDisplayStatus[] = [
+  "unsupported",
+  "pending_confirmation",
+  "supported",
+  "weak_support",
+  "contested_evidence",
+  "not_externally_verifiable",
 ];
-
-const TYPE_VAR: Record<ClaimType, string> = {
-  supported: "var(--claim-supported)",
-  assumption: "var(--claim-assumption)",
-  needs_evidence: "var(--claim-needs-evidence)",
-  counterargument: "var(--claim-counterargument)",
-};
 
 /** A claim as it appears on the board, drawn at schematic scale. */
 function DemoClaim({
   x,
   y,
   side,
-  type,
+  nature,
+  status,
+  evidenceCount = 0,
   text,
   delay,
 }: {
   x: number;
   y: number;
   side: "A" | "B";
-  type: ClaimType;
+  nature: ClaimNature;
+  status: ClaimDisplayStatus;
+  evidenceCount?: number;
   text: string;
   delay: number;
 }) {
   const w = 132;
   const left = side === "A" ? x - 22 - w : x + 22;
-  const color = TYPE_VAR[type];
+  const color = CLAIM_STATUS_COLOR[status];
+  const height = evidenceCount > 0 ? 42 : 34;
 
   return (
     <g className="settle" style={{ ["--delay" as string]: `${delay}ms` }}>
@@ -49,22 +56,43 @@ function DemoClaim({
       <circle cx={x} cy={y} r={3.5} fill={color} />
       <rect
         x={left}
-        y={y - 15}
+        y={y - height / 2}
         width={w}
-        height={30}
+        height={height}
         fill="var(--surface)"
         stroke="var(--border)"
         strokeWidth={1}
       />
-      <rect x={left} y={y - 15} width={2} height={30} fill={color} />
+      <rect x={left} y={y - height / 2} width={2} height={height} fill={color} />
       <text
         x={left + 10}
-        y={y + 4}
+        y={y - 2}
         fill="var(--foreground)"
         style={{ font: "500 11px var(--font-body), sans-serif" }}
       >
         {text}
       </text>
+      <text
+        x={left + 10}
+        y={y + 11}
+        fill="var(--muted)"
+        style={{ font: "500 7px var(--font-mono), monospace", letterSpacing: "0.08em" }}
+      >
+        {nature === "argument" ? "ARGUMENT" : "COUNTERARGUMENT"}
+      </text>
+      {evidenceCount > 0 && (
+        <g>
+          <circle cx={left + w - 33} cy={y + 9} r={2.5} fill={color} />
+          <text
+            x={left + w - 27}
+            y={y + 12}
+            fill="var(--muted)"
+            style={{ font: "500 7px var(--font-mono), monospace" }}
+          >
+            {evidenceCount} EV.
+          </text>
+        </g>
+      )}
     </g>
   );
 }
@@ -151,9 +179,34 @@ function BoardSchematic() {
         style={{ ["--len" as string]: 215, ["--delay" as string]: "820ms" }}
       />
 
-      <DemoClaim x={150} y={150} side="A" type="needs_evidence" text="Remote work lifts output" delay={1150} />
-      <DemoClaim x={290} y={200} side="B" type="counterargument" text="Rooms decide better" delay={1500} />
-      <DemoClaim x={150} y={252} side="A" type="supported" text="2023 meta-analysis: +4%" delay={1850} />
+      <DemoClaim
+        x={150}
+        y={154}
+        side="A"
+        nature="argument"
+        status="supported"
+        evidenceCount={1}
+        text="Remote work lifts output"
+        delay={1150}
+      />
+      <DemoClaim
+        x={290}
+        y={212}
+        side="B"
+        nature="counterargument"
+        status="unsupported"
+        text="Rooms decide better"
+        delay={1500}
+      />
+      <DemoClaim
+        x={150}
+        y={270}
+        side="A"
+        nature="argument"
+        status="unsupported"
+        text="Commutes drain focus"
+        delay={1850}
+      />
     </svg>
   );
 }
@@ -194,18 +247,25 @@ export function HomeSection() {
           </div>
 
           <dl className="mt-14 border-t border-rule pt-6">
-            <dt className="readout mb-3.5">Each claim is marked</dt>
+            <dt className="readout mb-3.5">
+              Role + source-check status
+            </dt>
             <dd className="flex flex-wrap gap-x-6 gap-y-2.5">
-              {LEGEND.map(({ type, label }) => (
-                <span key={type} className="flex items-center gap-2">
+              {LEGEND.map((status) => (
+                <span key={status} className="flex items-center gap-2">
                   <span
                     aria-hidden
                     className="h-[7px] w-[7px] rounded-full"
-                    style={{ background: TYPE_VAR[type] }}
+                    style={{ background: CLAIM_STATUS_COLOR[status] }}
                   />
-                  <span className="text-[13px] text-muted">{label}</span>
+                  <span className="text-[13px] text-muted">
+                    {CLAIM_STATUS_LABEL[status]}
+                  </span>
                 </span>
               ))}
+            </dd>
+            <dd className="readout mt-4">
+              Argument · Counterargument
             </dd>
           </dl>
         </div>

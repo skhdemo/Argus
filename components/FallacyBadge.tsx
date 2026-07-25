@@ -16,27 +16,18 @@ const TIPS: Record<FallacyTag, string> = {
 
 type FallacyBadgeProps = {
   tags?: FallacyTag[];
-  unsupported?: boolean;
 };
 
-export function FallacyBadge({ tags = [], unsupported }: FallacyBadgeProps) {
-  if (!unsupported && tags.length === 0) return null;
+export function FallacyBadge({ tags = [] }: FallacyBadgeProps) {
+  if (tags.length === 0) return null;
 
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      {unsupported && (
-        <span
-          title="Structurally unsupported — not a truth verdict"
-          className="border border-claim-needs-evidence/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-claim-needs-evidence"
-        >
-          Unsupported
-        </span>
-      )}
       {tags.map((tag) => (
         <span
           key={tag}
           title={TIPS[tag]}
-          className="border border-accent-warm/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-accent-warm"
+          className="border border-claim-pending-confirmation/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-claim-pending-confirmation"
         >
           {LABELS[tag]}
         </span>
