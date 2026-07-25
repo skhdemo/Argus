@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:backend": "vitest run lib app/api",
+    "test:backend": "vitest run lib app/api scripts/live-verify-smoke.test.ts",
     "typecheck:backend": "tsc -p tsconfig.backend.json --noEmit",
     "test:live:verify": "vitest run scripts/live-verify-smoke.test.ts"
   },
