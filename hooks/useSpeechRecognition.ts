@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 /**
  * Web Speech API types aren't in lib.dom.d.ts. Minimal ambient shape for the
@@ -64,6 +70,17 @@ function getRecognitionCtor(): SpeechRecognitionConstructor | null {
   return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
 }
 
+// Browser support never changes after mount, so no real subscription is needed.
+function subscribeNoop() {
+  return () => {};
+}
+function getSupportedSnapshot() {
+  return getRecognitionCtor() !== null;
+}
+function getServerSupportedSnapshot() {
+  return false;
+}
+
 // Chrome fires "no-speech" routinely during normal pauses — not a real error.
 const IGNORABLE_ERRORS = new Set(["no-speech", "aborted"]);
 
@@ -74,12 +91,19 @@ export function useSpeechRecognition(): UseSpeechRecognitionResult {
   const [finalChunks, setFinalChunks] = useState<FinalChunk[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // window doesn't exist during SSR, so this can't be computed synchronously
+  // without a hydration mismatch — useSyncExternalStore forces the server
+  // snapshot (false) on first client render, then resolves after mount.
+  const supported = useSyncExternalStore(
+    subscribeNoop,
+    getSupportedSnapshot,
+    getServerSupportedSnapshot,
+  );
+
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   // Tracks intent (as opposed to isListening state, which lags a tick behind
   // onend) so the restart-on-end handler knows whether to actually restart.
   const activeRef = useRef(false);
-
-  const supported = getRecognitionCtor() !== null;
 
   const ensureRecognition = useCallback((): SpeechRecognitionLike | null => {
     if (recognitionRef.current) return recognitionRef.current;

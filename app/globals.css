@@ -15,6 +15,12 @@
   --foreground: #e6edf3;
   --muted: #8b98a5;
   --border: #1f2933;
+  --surface: #11161d;
+
+  /* Listening/active state — teal, kept clear of every claim color below
+     and of the generic purple/violet "AI product" palette. */
+  --accent: #2dd4bf;
+  --danger: #ff6b6b;
 
   /* Claim types — PRD §4.4 */
   --claim-supported: #3fb950;
@@ -28,6 +34,9 @@
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-border: var(--border);
+  --color-surface: var(--surface);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
 
   --color-claim-supported: var(--claim-supported);
   --color-claim-assumption: var(--claim-assumption);
