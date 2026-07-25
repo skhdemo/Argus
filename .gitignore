@@ -37,7 +37,7 @@ coverage/
 
 # Personal agent briefs (local only; not source of truth)
 AGENT.md
-.agents/*.agent.md
+.agents/
 
 # Local AI-assistant tooling (machine-specific paths)
 .claude/
