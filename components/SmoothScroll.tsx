@@ -1,35 +1,14 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  type ReactNode,
-} from "react";
+import { useEffect, type ReactNode } from "react";
 import Lenis from "lenis";
 
-type SmoothScrollApi = {
-  scrollTo: (target: string | number | HTMLElement, opts?: { offset?: number }) => void;
-};
-
-const SmoothScrollContext = createContext<SmoothScrollApi | null>(null);
-
-export function useSmoothScroll() {
-  return useContext(SmoothScrollContext);
-}
-
 export function SmoothScroll({ children }: { children: ReactNode }) {
-  const lenisRef = useRef<Lenis | null>(null);
-
   useEffect(() => {
     const lenis = new Lenis({
-      duration: 1.15,
+      duration: 1.05,
       smoothWheel: true,
-      touchMultiplier: 1.2,
-      anchors: false,
     });
-    lenisRef.current = lenis;
 
     let frame = 0;
     const raf = (time: number) => {
@@ -40,7 +19,7 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
 
     const onClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
-      const anchor = target?.closest?.("a[href^='#']") as HTMLAnchorElement | null;
+      const anchor = target?.closest?.('a[href^="#"]') as HTMLAnchorElement | null;
       if (!anchor) return;
       const hash = anchor.getAttribute("href");
       if (!hash || hash === "#") return;
@@ -52,31 +31,12 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
     };
 
     document.addEventListener("click", onClick);
-
-    if (window.location.hash) {
-      const el = document.querySelector(window.location.hash);
-      if (el instanceof HTMLElement) {
-        requestAnimationFrame(() => lenis.scrollTo(el, { immediate: false }));
-      }
-    }
-
     return () => {
       document.removeEventListener("click", onClick);
       cancelAnimationFrame(frame);
       lenis.destroy();
-      lenisRef.current = null;
     };
   }, []);
 
-  const api: SmoothScrollApi = {
-    scrollTo: (target, opts) => {
-      lenisRef.current?.scrollTo(target, opts);
-    },
-  };
-
-  return (
-    <SmoothScrollContext.Provider value={api}>
-      {children}
-    </SmoothScrollContext.Provider>
-  );
+  return children;
 }

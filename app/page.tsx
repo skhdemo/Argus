@@ -1,16 +1,14 @@
 "use client";
 
 import { DebateWorkspace } from "@/components/debate/DebateWorkspace";
-import { Hero } from "@/components/landing/Hero";
-import { HowItWorks } from "@/components/landing/HowItWorks";
+import { HomeSection } from "@/components/landing/HomeSection";
 import { SmoothScroll } from "@/components/SmoothScroll";
 
 export default function Home() {
   return (
     <SmoothScroll>
       <main>
-        <Hero />
-        <HowItWorks />
+        <HomeSection />
         <DebateWorkspace />
       </main>
     </SmoothScroll>

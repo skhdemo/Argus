@@ -1,34 +1,23 @@
 @import "tailwindcss";
 
-/*
- * Argus visual system — "signal room"
- * Cool mist field, charcoal ink, teal accent. Claim colors fixed by PRD.
- */
-
 :root {
-  --background: #e6eaef;
-  --foreground: #0c1118;
-  --muted: #5a6572;
-  --border: #c9d0d9;
-  --surface: #f4f6f8;
-  --surface-elevated: #ffffff;
-  --ink-soft: #1a2330;
+  --background: #f6f7f8;
+  --foreground: #141414;
+  --muted: #66707a;
+  --border: #d7dcde;
+  --surface: #ffffff;
+  --line: #2a2a2a;
 
-  --accent: #0f766e;
-  --accent-strong: #0b5f59;
-  --accent-warm: #b45309;
-  --danger: #c2410c;
+  --accent: #1a1a1a;
+  --danger: #b42318;
 
-  --claim-supported: #15803d;
-  --claim-assumption: #a16207;
-  --claim-needs-evidence: #b91c1c;
-  --claim-counterargument: #1d4ed8;
+  --claim-supported: #2f9e44;
+  --claim-assumption: #e67700;
+  --claim-needs-evidence: #e03131;
+  --claim-counterargument: #1c7ed6;
 
-  --speaker-a: #1d4ed8;
-  --speaker-b: #c2410c;
-
-  --hero-ink: #070a0f;
-  --hero-mist: #9fb0c3;
+  --speaker-a: #1c7ed6;
+  --speaker-b: #e03131;
 }
 
 @theme inline {
@@ -37,11 +26,8 @@
   --color-muted: var(--muted);
   --color-border: var(--border);
   --color-surface: var(--surface);
-  --color-surface-elevated: var(--surface-elevated);
-  --color-ink-soft: var(--ink-soft);
+  --color-line: var(--line);
   --color-accent: var(--accent);
-  --color-accent-strong: var(--accent-strong);
-  --color-accent-warm: var(--accent-warm);
   --color-danger: var(--danger);
   --color-claim-supported: var(--claim-supported);
   --color-claim-assumption: var(--claim-assumption);
@@ -49,58 +35,18 @@
   --color-claim-counterargument: var(--claim-counterargument);
   --color-speaker-a: var(--speaker-a);
   --color-speaker-b: var(--speaker-b);
-  --color-hero-ink: var(--hero-ink);
-  --color-hero-mist: var(--hero-mist);
-
   --font-sans: var(--font-body);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
 }
 
-html {
-  scroll-behavior: auto;
-}
-
+html,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-body), "Segoe UI", sans-serif;
+  font-family: var(--font-body), sans-serif;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--accent) 35%, white);
-  color: var(--foreground);
-}
-
-.momentum-backdrop {
-  --momentum-a: 0.5;
-  --momentum-b: 0.5;
-}
-
-.momentum-backdrop::before,
-.momentum-backdrop::after {
-  content: "";
-  position: absolute;
-  inset: -25%;
-  border-radius: 9999px;
-  filter: blur(90px);
-  pointer-events: none;
-  transition:
-    opacity 800ms ease,
-    transform 800ms ease;
-  z-index: 0;
-}
-
-.momentum-backdrop::before {
-  left: -10%;
-  background: var(--speaker-a);
-  opacity: calc(0.08 + var(--momentum-a) * 0.22);
-  transform: scale(calc(0.85 + var(--momentum-a) * 0.45));
-}
-
-.momentum-backdrop::after {
-  right: -10%;
-  background: var(--speaker-b);
-  opacity: calc(0.08 + var(--momentum-b) * 0.22);
-  transform: scale(calc(0.85 + var(--momentum-b) * 0.45));
+  background: #cfe3ff;
 }

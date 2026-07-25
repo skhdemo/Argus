@@ -1,14 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { useState } from "react";
 
-import { ClaimInspector } from "@/components/ClaimInspector";
 import { DebateGraph } from "@/components/DebateGraph";
-import { MomentumBackdrop } from "@/components/MomentumBackdrop";
-import { StartControls } from "@/components/StartControls";
-import { SummaryPanel } from "@/components/SummaryPanel";
-import { TranscriptPanel } from "@/components/TranscriptPanel";
 import { useDebateSession } from "@/hooks/useDebateSession";
 import { useExtractionLoop } from "@/hooks/useExtractionLoop";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -17,6 +11,9 @@ import type { SpeakerId } from "@/lib/types/debate";
 export function DebateWorkspace() {
   const speech = useSpeechRecognition();
   const session = useDebateSession();
+  const [topic, setTopic] = useState("");
+  const [speakerAName, setSpeakerAName] = useState("Speaker A");
+  const [speakerBName, setSpeakerBName] = useState("Speaker B");
   const [lastSpeaker, setLastSpeaker] = useState<SpeakerId | null>(null);
 
   const extraction = useExtractionLoop({
@@ -33,112 +30,79 @@ export function DebateWorkspace() {
     },
   });
 
-  const claimsById = useMemo(
-    () => new Map(session.claims.map((c) => [c.id, c])),
-    [session.claims],
-  );
-
-  const selectedClaim = session.selectedClaimId
-    ? (claimsById.get(session.selectedClaimId) ?? null)
-    : null;
-
   return (
     <section
       id="debate"
-      className="min-h-[100svh] scroll-mt-0 bg-background px-4 py-10 md:px-8 lg:px-12"
+      className="min-h-[100svh] border-t border-border bg-background px-4 py-10 md:px-10"
     >
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-60px" }}
-        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-        className="mx-auto flex max-w-[1400px] flex-col gap-6"
-      >
-        <header className="flex flex-col gap-4 border-b border-border pb-6 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-              Debate floor
-            </p>
-            <h2 className="mt-2 font-display text-3xl font-semibold tracking-tight md:text-4xl">
-              Live reasoning map
-            </h2>
-            <p className="mt-2 max-w-xl text-sm text-muted md:text-base">
-              Start the mic. Talk naturally. The graph updates as Argus extracts
-              structure in the background.
-            </p>
-          </div>
-          <StartControls
-            isListening={speech.isListening}
-            supported={speech.supported}
-            error={speech.error}
-            extractStatus={extraction.status}
-            onStart={speech.start}
-            onStop={speech.stop}
+      <div className="mx-auto flex w-full max-w-6xl flex-col items-center">
+        <div className="mb-8 flex w-full flex-col items-center gap-5">
+          <input
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            placeholder="Debate topic"
+            className="w-full max-w-md border-b border-line bg-transparent px-2 py-2 text-center font-display text-2xl tracking-tight outline-none placeholder:text-muted md:text-3xl"
           />
-        </header>
 
-        {extraction.errorMessage && (
-          <div className="flex items-center justify-between gap-3 border border-danger/30 bg-surface-elevated px-4 py-3 text-sm text-danger">
-            <span>{extraction.errorMessage}</span>
-            <button
-              type="button"
-              onClick={extraction.dismissError}
-              className="font-mono text-xs uppercase tracking-wide"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(300px,0.8fr)]">
-          <MomentumBackdrop momentum={session.momentum}>
-            <DebateGraph
-              claims={session.claims}
-              edges={session.edges}
-              selectedClaimId={session.selectedClaimId}
-              onSelectClaim={session.selectClaim}
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <input
+              value={speakerAName}
+              onChange={(e) => setSpeakerAName(e.target.value)}
+              aria-label="Rename speaker A"
+              className="w-36 border border-border bg-surface px-2 py-1.5 text-center text-sm outline-none focus:border-speaker-a"
             />
-          </MomentumBackdrop>
+            <input
+              value={speakerBName}
+              onChange={(e) => setSpeakerBName(e.target.value)}
+              aria-label="Rename speaker B"
+              className="w-36 border border-border bg-surface px-2 py-1.5 text-center text-sm outline-none focus:border-speaker-b"
+            />
+          </div>
 
-          <aside className="flex min-h-[420px] flex-col gap-4">
-            <div className="min-h-[200px] flex-1">
-              <ClaimInspector
-                claim={selectedClaim}
-                edges={session.edges}
-                claimsById={claimsById}
-                onClose={() => session.selectClaim(null)}
-              />
-            </div>
-            <SummaryPanel claims={session.claims} edges={session.edges} />
-          </aside>
+          <div className="flex flex-col items-center gap-2">
+            {!speech.supported ? (
+              <p className="text-sm text-danger">Needs desktop Chrome + mic.</p>
+            ) : (
+              <button
+                type="button"
+                onClick={speech.isListening ? speech.stop : speech.start}
+                className="border border-line bg-foreground px-8 py-2.5 text-sm font-medium text-background"
+              >
+                {speech.isListening ? "Stop" : "Start"}
+              </button>
+            )}
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
+              {speech.isListening
+                ? extraction.status === "pending"
+                  ? "Listening · extracting"
+                  : "Listening"
+                : "Ready"}
+            </p>
+            {speech.error && !speech.isListening && (
+              <p className="text-sm text-danger">{speech.error}</p>
+            )}
+            {extraction.errorMessage && (
+              <button
+                type="button"
+                onClick={extraction.dismissError}
+                className="text-sm text-danger underline"
+              >
+                {extraction.errorMessage} · dismiss
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-          <TranscriptPanel
-            chunks={speech.finalChunks}
-            interim={speech.transcriptInterim}
+        {/* Full-width graph; grows downward — page scrolls with the branches */}
+        <div className="w-full">
+          <DebateGraph
+            claims={session.claims}
+            edges={session.edges}
+            speakerAName={speakerAName.trim() || "Speaker A"}
+            speakerBName={speakerBName.trim() || "Speaker B"}
           />
-          {process.env.NODE_ENV === "development" && (
-            <div className="flex flex-col gap-2 border border-dashed border-border p-3">
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
-                Dev fixtures
-              </p>
-              {(
-                ["claim-only", "support-edge", "contradict-edge"] as const
-              ).map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => extraction.injectFixture(name)}
-                  className="border border-border bg-surface-elevated px-3 py-2 text-left font-mono text-xs hover:border-accent"
-                >
-                  Inject {name}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
-      </motion.div>
+      </div>
     </section>
   );
 }
