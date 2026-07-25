@@ -5,25 +5,38 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ApiErrorBody,
   Claim,
-  Edge,
+  Evidence,
   ExtractRequest,
   ExtractResponse,
+  Relation,
   SpeakerId,
 } from "@/lib/types/debate";
 
 import claimOnlyFixture from "@/lib/extract/fixtures/claim-only.json";
+import contestedEvidenceFixture from "@/lib/extract/fixtures/contested-evidence.json";
 import contradictEdgeFixture from "@/lib/extract/fixtures/contradict-edge.json";
+import messiEvidenceFixture from "@/lib/extract/fixtures/messi-evidence.json";
+import notVerifiableAnecdoteFixture from "@/lib/extract/fixtures/not-verifiable-anecdote.json";
 import supportEdgeFixture from "@/lib/extract/fixtures/support-edge.json";
 
 const DEBOUNCE_MS = 3000;
 const CHAR_THRESHOLD = 80;
 
-export type FixtureName = "claim-only" | "support-edge" | "contradict-edge";
+export type FixtureName =
+  | "claim-only"
+  | "support-edge"
+  | "contradict-edge"
+  | "messi-evidence"
+  | "contested-evidence"
+  | "not-verifiable-anecdote";
 
 const FIXTURES: Record<FixtureName, ExtractResponse> = {
   "claim-only": claimOnlyFixture as ExtractResponse,
   "support-edge": supportEdgeFixture as ExtractResponse,
   "contradict-edge": contradictEdgeFixture as ExtractResponse,
+  "messi-evidence": messiEvidenceFixture as ExtractResponse,
+  "contested-evidence": contestedEvidenceFixture as ExtractResponse,
+  "not-verifiable-anecdote": notVerifiableAnecdoteFixture as ExtractResponse,
 };
 
 export type ExtractionLoopStatus = "idle" | "pending" | "error";
@@ -33,7 +46,8 @@ export type UseExtractionLoopArgs = {
   /** Full accumulated final transcript from Gemini STT. */
   transcriptFinal: string;
   existingClaims: Claim[];
-  existingEdges: Edge[];
+  existingEvidence: Evidence[];
+  existingRelations: Relation[];
   inferredSpeaker: SpeakerId | null;
   onDelta: (delta: ExtractResponse) => void;
 };
@@ -50,7 +64,8 @@ export function useExtractionLoop({
   isListening,
   transcriptFinal,
   existingClaims,
-  existingEdges,
+  existingEvidence,
+  existingRelations,
   inferredSpeaker,
   onDelta,
 }: UseExtractionLoopArgs): UseExtractionLoopResult {
@@ -70,9 +85,23 @@ export function useExtractionLoop({
   // Keep latest values in a ref so the debounce timer's callback always sees
   // current data without needing to be re-created on every keystroke. Synced
   // in an effect (not during render) — refs must not be written mid-render.
-  const latestRef = useRef({ existingClaims, existingEdges, inferredSpeaker, onDelta });
+  const latestRef = useRef({
+    existingClaims,
+    existingEvidence,
+    existingRelations,
+    inferredSpeaker,
+    onDelta,
+    transcriptFinal,
+  });
   useEffect(() => {
-    latestRef.current = { existingClaims, existingEdges, inferredSpeaker, onDelta };
+    latestRef.current = {
+      existingClaims,
+      existingEvidence,
+      existingRelations,
+      inferredSpeaker,
+      onDelta,
+      transcriptFinal,
+    };
   });
 
   const fireNow = useCallback(async (text: string) => {
@@ -83,19 +112,29 @@ export function useExtractionLoop({
 
     const sentEnd = sentUpToRef.current + text.length;
     const myRequestId = ++requestIdRef.current;
-    const { existingClaims, existingEdges, inferredSpeaker, onDelta } = latestRef.current;
+    const {
+      existingClaims,
+      existingEvidence,
+      existingRelations,
+      inferredSpeaker,
+      onDelta,
+      transcriptFinal,
+    } = latestRef.current;
 
     setStatus("pending");
     try {
+      const body: ExtractRequest = {
+        text,
+        transcriptWindow: transcriptFinal,
+        inferredSpeaker,
+        existingClaims,
+        existingEvidence,
+        existingRelations,
+      };
       const res = await fetch("/api/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text,
-          existingClaims,
-          existingEdges,
-          inferredSpeaker,
-        } satisfies ExtractRequest),
+        body: JSON.stringify(body),
       });
 
       if (myRequestId !== requestIdRef.current) return; // superseded by a newer call
