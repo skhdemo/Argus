@@ -15,7 +15,8 @@ import {
   computeSummaryStats,
   resolveMostContestedClaimId,
 } from "@/lib/summary/stats";
-import type { ApiErrorBody, SummaryResponse } from "@/lib/types/debate";
+import { computeDebateScore, toDebateScorePayload } from "@/lib/score/debateScore";
+import type { ApiErrorBody, DebateScoreSnapshot, SummaryResponse } from "@/lib/types/debate";
 
 export const runtime = "nodejs";
 
@@ -59,6 +60,9 @@ export async function POST(
 
   const { claims, edges } = parsed.data;
   const stats = computeSummaryStats(claims, edges);
+  const debateScore: DebateScoreSnapshot = toDebateScorePayload(
+    computeDebateScore(claims, edges),
+  );
 
   if (claims.length === 0) {
     return NextResponse.json({
@@ -66,6 +70,7 @@ export async function POST(
       mostContestedClaimId: null,
       narrative:
         "No claims extracted yet. Structural summary will appear after the debate graph has content.",
+      debateScore,
     });
   }
 
@@ -128,6 +133,7 @@ export async function POST(
         stats.mostContestedClaimId,
       ),
       narrative: modelParsed.data.narrative.trim(),
+      debateScore,
     };
 
     return NextResponse.json(result);

@@ -10,6 +10,7 @@ Hackathon demo. Desktop Chrome. No auth. No persistence. No manual speaker toggl
 |---|---|
 | [`docs/PRD.md`](./docs/PRD.md) | Product scope & MoSCoW |
 | [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) | Epics → phases → tasks → steps with owners |
+| [`docs/DEBATE_SCORING.md`](./docs/DEBATE_SCORING.md) | Structural who-is-ahead formula + proofs |
 | [`docs/TEAM.md`](./docs/TEAM.md) | Roles, branches, gates cheat sheet |
 | [`.agents/README.md`](./.agents/README.md) | How personal agent briefs work (gitignored files) |
 

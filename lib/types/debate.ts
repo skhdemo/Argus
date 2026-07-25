@@ -80,6 +80,32 @@ export type SummaryResponse = {
   unsupportedCount: number;
   mostContestedClaimId: string | null;
   narrative: string;
+  /** Deterministic structural debate score (additive; FE may ignore). */
+  debateScore?: DebateScoreSnapshot;
+};
+
+/** Compact speaker score snapshot — see docs/DEBATE_SCORING.md */
+export type DebateScoreSnapshot = {
+  rawA: number;
+  rawB: number;
+  ratioA: number;
+  ratioB: number;
+  scoreA: number;
+  scoreB: number;
+  leader: "A" | "B" | "tied";
+  leaderShare: number;
+  isDecisive: boolean;
+};
+
+export type ScoreRequest = {
+  claims: Claim[];
+  edges: Edge[];
+};
+
+export type ScoreResponse = DebateScoreSnapshot & {
+  /** Optional debug breakdown for tooling / demos */
+  undercutA?: number;
+  undercutB?: number;
 };
 
 export type ApiErrorBody = {
