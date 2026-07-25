@@ -60,8 +60,9 @@ export async function POST(
 
   const { claims, edges } = parsed.data;
   const stats = computeSummaryStats(claims, edges);
+  // Phase F will pass real evidence/relations; keep score v2 callable until then.
   const debateScore: DebateScoreSnapshot = toDebateScorePayload(
-    computeDebateScore(claims, edges),
+    computeDebateScore(claims, [], []),
   );
 
   if (claims.length === 0) {
