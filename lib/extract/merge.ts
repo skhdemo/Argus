@@ -45,6 +45,10 @@ export function normalizeModelExtract(
       speaker: c.speaker,
       type: c.type,
       sourceExcerpt: c.sourceExcerpt,
+      ...(c.unsupported === true ? { unsupported: true } : {}),
+      ...(c.fallacies && c.fallacies.length > 0
+        ? { fallacies: c.fallacies }
+        : {}),
       createdAt: now,
     };
   });
