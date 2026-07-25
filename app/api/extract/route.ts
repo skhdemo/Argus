@@ -13,6 +13,10 @@ import {
   modelExtractSchema,
 } from "@/lib/extract/schema";
 import {
+  FALLACY_INSTRUCTIONS,
+  annotateClaimsSoftFlags,
+} from "@/lib/fallacy/detect";
+import {
   SPEAKER_INSTRUCTIONS,
   buildSpeakerUserPromptSlice,
   inferSpeaker,
@@ -91,8 +95,12 @@ export async function POST(
       model: GEMINI_MODEL,
       contents: userPrompt,
       config: {
-        // One-call path (B3.2.3 default): extract + speaker instructions together.
-        systemInstruction: `${EXTRACT_SYSTEM_PROMPT}\n\n${SPEAKER_INSTRUCTIONS}`,
+        // One-call path: extract + speaker + soft fallacy/unsupported flags.
+        systemInstruction: [
+          EXTRACT_SYSTEM_PROMPT,
+          SPEAKER_INSTRUCTIONS,
+          FALLACY_INSTRUCTIONS,
+        ].join("\n\n"),
         responseMimeType: "application/json",
         responseJsonSchema: modelExtractJsonSchema,
         temperature: 0.2,
@@ -141,17 +149,28 @@ export async function POST(
       modelConfidence: normalized.speakerConfidence,
     });
 
+    const withSpeaker = normalized.claims.map((claim) => ({
+      ...claim,
+      // Align UNKNOWN claim speakers with chunk inference; keep explicit A/B.
+      speaker: claim.speaker === "UNKNOWN" ? inferred.speaker : claim.speaker,
+      speakerConfidence: claim.speakerConfidence ?? inferred.confidence,
+    }));
+
+    const claims = annotateClaimsSoftFlags({
+      claims: withSpeaker,
+      edges: normalized.edges,
+      existingEdges: body.existingEdges,
+      modelSoft: modelParsed.data.claims.map((c) => ({
+        unsupported: c.unsupported,
+        fallacies: c.fallacies,
+      })),
+    });
+
     const result: ExtractResponse = {
       ...normalized,
       inferredSpeaker: inferred.speaker,
       speakerConfidence: inferred.confidence,
-      claims: normalized.claims.map((claim) => ({
-        ...claim,
-        // Align UNKNOWN claim speakers with chunk inference; keep explicit A/B.
-        speaker:
-          claim.speaker === "UNKNOWN" ? inferred.speaker : claim.speaker,
-        speakerConfidence: claim.speakerConfidence ?? inferred.confidence,
-      })),
+      claims,
     };
 
     return NextResponse.json(result);

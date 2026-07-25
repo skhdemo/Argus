@@ -53,6 +53,13 @@ export const extractRequestSchema = z.object({
   existingEdges: z.array(edgeSchema).default([]),
 });
 
+export const fallacyTagSchema = z.enum([
+  "ad_hominem",
+  "strawman",
+  "circular_reasoning",
+  "false_dilemma",
+]);
+
 /** Raw model JSON before stable id assignment */
 export const modelClaimSchema = z.object({
   clientId: z.string().min(1),
@@ -60,6 +67,9 @@ export const modelClaimSchema = z.object({
   speaker: speakerIdSchema,
   type: claimTypeSchema,
   sourceExcerpt: z.string().optional(),
+  /** Soft warning from BE2 fallacy instructions — not a truth verdict */
+  unsupported: z.boolean().optional(),
+  fallacies: z.array(fallacyTagSchema).optional(),
 });
 
 export const modelEdgeSchema = z.object({
@@ -104,6 +114,19 @@ export const modelExtractJsonSchema = {
             ],
           },
           sourceExcerpt: { type: "string" },
+          unsupported: { type: "boolean" },
+          fallacies: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: [
+                "ad_hominem",
+                "strawman",
+                "circular_reasoning",
+                "false_dilemma",
+              ],
+            },
+          },
         },
         required: ["clientId", "text", "speaker", "type"],
       },
