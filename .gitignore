@@ -35,5 +35,11 @@ Thumbs.db
 # Testing / coverage
 coverage/
 
-# Personal agent brief (local only; not source of truth)
+# Personal agent briefs (local only; not source of truth)
 AGENT.md
+.agents/*.agent.md
+
+# Local AI-assistant tooling (machine-specific paths)
+.claude/
+AGENTS.md
+CLAUDE.md

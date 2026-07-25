@@ -21,17 +21,24 @@ Hackathon demo. Desktop Chrome. No auth. No persistence. No manual speaker toggl
 
 ## Stack
 
-Next.js (App Router) · TypeScript · Tailwind · Web Speech API · `@google/genai` (Gemini 3+) · `react-force-graph-2d` · Vercel
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Web Speech API · `@google/genai` (Gemini 3+) · `react-force-graph-2d` · Vercel
 
-## Setup (after scaffold lands)
+## Setup
 
 ```bash
 npm install
-cp .env.example .env.local   # add GEMINI_API_KEY (BE1)
 npm run dev
 ```
 
-Use **Chrome**. Allow microphone.
+Then open http://localhost:3000.
+
+Use **Chrome**. Allow microphone — speech capture is Web Speech API and Chrome-only.
+
+Once BE1 lands `.env.example` (Task A0.2), also run `cp .env.example .env.local` and add
+`GEMINI_API_KEY`. The frontend does not need it until it starts calling `/api/extract`.
+
+> Tailwind v4 has no `tailwind.config.ts` — design tokens live in
+> [`app/globals.css`](./app/globals.css) under `@theme`.
 
 ## Branching
 
