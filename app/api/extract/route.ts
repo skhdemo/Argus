@@ -160,10 +160,13 @@ export async function POST(
       claims: withSpeaker,
       edges: normalized.edges,
       existingEdges: body.existingEdges,
-      modelSoft: modelParsed.data.claims.map((c) => ({
-        unsupported: c.unsupported,
-        fallacies: c.fallacies,
-      })),
+      modelSoft: modelParsed.data.claims.map((c) => {
+        const soft: { unsupported?: boolean; fallacies?: typeof c.fallacies } =
+          {};
+        if (c.unsupported !== undefined) soft.unsupported = c.unsupported;
+        if (c.fallacies !== undefined) soft.fallacies = c.fallacies;
+        return soft;
+      }),
     });
 
     const result: ExtractResponse = {
