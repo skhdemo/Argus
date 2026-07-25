@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+/*
+ * A0.1 baseline only — a dark "debate board" ground so the shell isn't a white
+ * page. The full token system (spacing, surfaces, type scale, graph styling) is
+ * Task B1.2.4; deliberately not front-run here.
+ *
+ * Claim-type colors below are NOT a design choice — they are fixed by
+ * PRD.md §9 / IMPLEMENTATION_PLAN.md §4.4. Defined once here so DebateGraph
+ * (B4.3) and ClaimInspector (B4.4) read from the same source.
+ */
+
+:root {
+  --background: #0b0f14;
+  --foreground: #e6edf3;
+  --muted: #8b98a5;
+  --border: #1f2933;
+
+  /* Claim types — PRD §4.4 */
+  --claim-supported: #3fb950;
+  --claim-assumption: #d29922;
+  --claim-needs-evidence: #f85149;
+  --claim-counterargument: #4a9eff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+
+  --color-claim-supported: var(--claim-supported);
+  --color-claim-assumption: var(--claim-assumption);
+  --color-claim-needs-evidence: var(--claim-needs-evidence);
+  --color-claim-counterargument: var(--claim-counterargument);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
