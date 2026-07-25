@@ -33,81 +33,91 @@ export function DebateWorkspace() {
     },
   });
 
+  const status = speech.isListening
+    ? extraction.status === "pending"
+      ? "Listening · reading the argument"
+      : "Listening"
+    : "Ready";
+
   return (
     <section
       id="debate"
-      className="min-h-[100svh] border-t border-border/80 px-4 py-12 md:px-10"
+      className="min-h-[100svh] border-t border-rule px-6 py-12 md:px-12 md:py-16"
     >
-      <div className="mx-auto flex w-full max-w-6xl flex-col items-center">
-        <div className="mb-10 flex w-full flex-col items-center gap-5">
-          <input
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="Debate topic"
-            className="w-full max-w-lg rounded-soft border border-transparent bg-surface/70 px-4 py-3 text-center font-display text-2xl font-semibold tracking-tight text-foreground outline-none ring-1 ring-border placeholder:text-muted focus:ring-2 focus:ring-accent md:text-3xl"
-          />
-
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <input
-              value={speakerAName}
-              onChange={(e) => setSpeakerAName(e.target.value)}
-              aria-label="Rename speaker A"
-              className="w-40 rounded-soft border border-border bg-surface px-3 py-2 text-center text-sm font-medium outline-none focus:border-speaker-a"
+      <div className="mx-auto w-full max-w-5xl">
+        <div className="flex items-baseline justify-between border-b border-rule pb-3">
+          <span className="readout">The motion</span>
+          <span className="readout flex items-center gap-2">
+            <span
+              aria-hidden
+              className={`h-1.5 w-1.5 rounded-full ${speech.isListening ? "animate-pulse" : ""}`}
+              style={{
+                background: speech.isListening
+                  ? "var(--claim-supported)"
+                  : "var(--faint)",
+              }}
             />
-            <input
-              value={speakerBName}
-              onChange={(e) => setSpeakerBName(e.target.value)}
-              aria-label="Rename speaker B"
-              className="w-40 rounded-soft border border-border bg-surface px-3 py-2 text-center text-sm font-medium outline-none focus:border-speaker-b"
-            />
-          </div>
+            {status}
+          </span>
+        </div>
 
-          <div className="flex flex-col items-center gap-2">
-            {!speech.supported ? (
-              <p className="text-sm text-danger">
-                Needs desktop Chrome with microphone (MediaRecorder).
-              </p>
-            ) : (
-              <button
-                type="button"
-                onClick={speech.isListening ? speech.stop : speech.start}
-                className={
-                  speech.isListening
-                    ? "rounded-soft bg-danger px-8 py-2.5 text-sm font-semibold text-white"
-                    : "rounded-soft bg-accent px-8 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                }
-              >
-                {speech.isListening ? "Stop" : "Start"}
-              </button>
-            )}
-            <p className="text-xs font-medium tracking-wide text-muted">
-              {speech.isListening
-                ? extraction.status === "pending"
-                  ? "Listening · extracting"
-                  : "Listening"
-                : "Ready"}
+        <input
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          placeholder="What are they arguing about?"
+          aria-label="Debate motion"
+          className="mt-6 w-full bg-transparent text-center font-display text-[clamp(1.75rem,4vw,2.75rem)] leading-tight tracking-[-0.015em] text-foreground outline-none placeholder:text-faint"
+        />
+
+        <div className="mt-8 flex flex-col items-center gap-3 border-t border-rule pt-7">
+          {speech.supported ? (
+            <button
+              type="button"
+              onClick={speech.isListening ? speech.stop : speech.start}
+              className={`px-8 py-3 text-sm font-medium transition-opacity hover:opacity-85 ${
+                speech.isListening
+                  ? "bg-danger text-white"
+                  : "bg-foreground text-[var(--paper)]"
+              }`}
+            >
+              {speech.isListening ? "Close the floor" : "Open the floor"}
+            </button>
+          ) : (
+            <p className="max-w-xs text-center text-[13px] leading-relaxed text-danger">
+              This browser can&rsquo;t record audio. Open Argus in desktop Chrome
+              and allow the microphone.
             </p>
-            {speech.error && !speech.isListening && (
-              <p className="text-sm text-danger">{speech.error}</p>
-            )}
+          )}
+          <p className="readout">Click either name to rename a speaker</p>
+        </div>
+
+        {(speech.error && !speech.isListening) || extraction.errorMessage ? (
+          <div className="mt-6 flex items-start justify-center gap-3 border-l-2 border-danger bg-surface px-4 py-3">
+            <p className="text-[13px] leading-relaxed text-foreground">
+              {speech.error && !speech.isListening
+                ? speech.error
+                : extraction.errorMessage}
+            </p>
             {extraction.errorMessage && (
               <button
                 type="button"
                 onClick={extraction.dismissError}
-                className="text-sm text-danger underline"
+                className="readout shrink-0 underline underline-offset-2 hover:text-foreground"
               >
-                {extraction.errorMessage} · dismiss
+                Dismiss
               </button>
             )}
           </div>
-        </div>
+        ) : null}
 
-        <div className="w-full">
+        <div className="mt-16 pb-20">
           <DebateGraph
             claims={session.claims}
             edges={session.edges}
-            speakerAName={speakerAName.trim() || "Speaker A"}
-            speakerBName={speakerBName.trim() || "Speaker B"}
+            speakerAName={speakerAName}
+            speakerBName={speakerBName}
+            onRenameA={setSpeakerAName}
+            onRenameB={setSpeakerBName}
           />
         </div>
       </div>
