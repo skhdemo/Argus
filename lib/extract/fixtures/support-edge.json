@@ -1,0 +1,22 @@
+{
+  "claims": [
+    {
+      "id": "c_fixtureclaim02",
+      "text": "A 2023 meta-analysis found a 4% output gain for remote software teams.",
+      "speaker": "A",
+      "type": "supported",
+      "createdAt": 1700000001000
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_fixturesupport01",
+      "from": "c_fixtureclaim02",
+      "to": "c_fixtureclaim01",
+      "type": "supports"
+    }
+  ],
+  "inferredSpeaker": "A",
+  "speakerConfidence": 0.55,
+  "notes": "fixture: support-edge (links to c_fixtureclaim01 from claim-only)"
+}

@@ -1,0 +1,88 @@
+/**
+ * Argus shared debate contract (BE1 owns).
+ *
+ * Freeze after A0.3: additive changes only via `contract/*` PRs.
+ * Discord: post freeze notice in #argus-contracts when this lands.
+ */
+
+export type SpeakerId = "A" | "B" | "UNKNOWN";
+
+export type ClaimType =
+  | "supported"
+  | "assumption"
+  | "needs_evidence"
+  | "counterargument";
+
+export type EdgeType = "supports" | "contradicts" | "responds_to";
+
+/** FUTURE BE2 — ad hominem | strawman | circular | false_dilemma */
+export type FallacyTag =
+  | "ad_hominem"
+  | "strawman"
+  | "circular_reasoning"
+  | "false_dilemma";
+
+export type Claim = {
+  id: string;
+  text: string;
+  speaker: SpeakerId;
+  /** FUTURE BE2 — 0–1 confidence from auto attribution */
+  speakerConfidence?: number;
+  type: ClaimType;
+  /** FUTURE BE2 — soft warning, not a truth verdict */
+  unsupported?: boolean;
+  /** FUTURE BE2 */
+  fallacies?: FallacyTag[];
+  /** FUTURE — transcript sync (Could Have) */
+  sourceExcerpt?: string;
+  createdAt: number;
+};
+
+export type Edge = {
+  id: string;
+  from: string;
+  to: string;
+  type: EdgeType;
+};
+
+export type ExtractRequest = {
+  /** New transcript chunk(s) since last call */
+  text: string;
+  /** Optional recent context window */
+  transcriptWindow?: string;
+  /** Client hint; server may override (BE2 speaker inference) */
+  inferredSpeaker?: SpeakerId | null;
+  existingClaims: Claim[];
+  existingEdges: Edge[];
+};
+
+/**
+ * Server returns deltas only. Client merges by id.
+ * Updates to an existing claim reuse the same id.
+ */
+export type ExtractResponse = {
+  claims: Claim[];
+  edges: Edge[];
+  inferredSpeaker: SpeakerId;
+  speakerConfidence: number;
+  /** Debug only — hide in prod UI */
+  notes?: string;
+};
+
+export type SummaryRequest = {
+  claims: Claim[];
+  edges: Edge[];
+};
+
+export type SummaryResponse = {
+  claimCount: number;
+  evidenceCount: number;
+  unsupportedCount: number;
+  mostContestedClaimId: string | null;
+  narrative: string;
+};
+
+export type ApiErrorBody = {
+  error: string;
+  code: "BAD_REQUEST" | "UPSTREAM" | "PARSE" | "MISSING_KEY";
+};
