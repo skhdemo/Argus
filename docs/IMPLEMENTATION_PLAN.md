@@ -58,7 +58,7 @@ BE1 and BE2 **do not** edit FE-owned files until **Phase 3 Gate** is green (Must
 | `components/ClaimInspector.tsx` | Basic inspector |
 | `components/DebateGraph.tsx` | **Shell + data binding** owned by FE; BE2 may PR polish (see §2.3) |
 | `components/TextFallbackInput.tsx` | UI shell |
-| `hooks/useSpeechRecognition.ts` | Web Speech API wrapper |
+| `hooks/useSpeechRecognition.ts` | MediaRecorder → Gemini `/api/transcribe` |
 | `hooks/useDebateSession.ts` | Client graph/transcript state |
 | `hooks/useExtractionLoop.ts` | Polling/debounce → POST `/api/extract` |
 
@@ -722,7 +722,7 @@ Daily standup (15 min): each role answers — **done / next / blocked / gate sta
 
 | Feature | Primary | Helper |
 |---|---|---|
-| Web Speech STT | FE | — |
+| Gemini audio STT + diarization | BE1 | FE (MediaRecorder hook) |
 | Auto speaker inference | BE2 | BE1 (route wire) |
 | `/api/extract` + Gemini | BE1 | BE2 (speaker fields) |
 | Live graph | FE | BE2 (anim/icons later) |

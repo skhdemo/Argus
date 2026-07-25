@@ -60,6 +60,7 @@ export default function Home() {
     transcriptFinal,
     transcriptInterim,
     finalChunks,
+    lastSpeaker,
     error,
     supported,
   } = useSpeechRecognition();
@@ -75,12 +76,14 @@ export default function Home() {
     [session],
   );
 
+  const speakerHint = lastSpeaker ?? lastInferredSpeaker;
+
   const loop = useExtractionLoop({
     isListening,
     transcriptFinal,
     existingClaims: session.claims,
     existingEdges: session.edges,
-    inferredSpeaker: lastInferredSpeaker,
+    inferredSpeaker: speakerHint,
     onDelta: handleDelta,
   });
 

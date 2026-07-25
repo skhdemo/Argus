@@ -21,7 +21,7 @@ Hackathon demo. Desktop Chrome. No auth. No persistence. No manual speaker toggl
 
 ## Stack
 
-Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Web Speech API · `@google/genai` (Gemini 3+) · `react-force-graph-2d` · Vercel
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · MediaRecorder + Gemini audio STT/diarization · `@google/genai` (Gemini 3+) · `react-force-graph-2d` · Vercel
 
 ## Setup
 
@@ -33,7 +33,7 @@ npm run dev
 
 Then open http://localhost:3000.
 
-Use **Chrome**. Allow microphone — speech capture is Web Speech API and Chrome-only.
+Use a desktop browser with mic support (**Chrome** recommended). Allow microphone — audio is recorded in short chunks and transcribed by **Gemini** (`POST /api/transcribe`), including speaker A/B diarization.
 
 ### Gemini API key
 
@@ -42,7 +42,7 @@ Use **Chrome**. Allow microphone — speech capture is Web Speech API and Chrome
 3. **Never commit** `.env.local` or real keys. Only BE1 / whoever rotates the shared demo key should hold Production secrets.
 4. To rotate: generate a new key in AI Studio, update `.env.local` locally (and Vercel env later), revoke the old key.
 
-The frontend does not need the key until it calls `/api/extract` (server-side only).
+Required for `/api/transcribe`, `/api/extract`, and `/api/summary` (all server-side).
 
 > **Vercel:** project + Production/Preview `GEMINI_API_KEY` wiring is postponed — do it before demo deploy if time allows.
 

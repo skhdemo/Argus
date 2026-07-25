@@ -12,9 +12,9 @@ function errorMessage(error: string): string {
     case "service-not-allowed":
       return "Microphone permission denied. Allow mic access and try again.";
     case "not-supported":
-      return "Speech recognition isn't available in this browser.";
+      return "Microphone recording isn't available in this browser.";
     default:
-      return `Speech recognition error: ${error}`;
+      return `Speech capture error: ${error}`;
   }
 }
 
@@ -28,9 +28,9 @@ export function StartControls({
   if (!supported) {
     return (
       <div className="rounded-md border border-border bg-surface px-4 py-3 text-sm text-danger">
-        Speech capture needs desktop{" "}
-        <strong className="text-foreground">Chrome</strong>. Open this page
-        there to start a session.
+        Speech capture needs a desktop browser with microphone +{" "}
+        <strong className="text-foreground">MediaRecorder</strong> (Chrome
+        recommended). Gemini transcribes audio server-side.
       </div>
     );
   }
@@ -52,7 +52,7 @@ export function StartControls({
             isListening ? "animate-pulse bg-accent" : "bg-border"
           }`}
         />
-        {isListening ? "Listening" : "Not listening"}
+        {isListening ? "Listening (Gemini STT)" : "Not listening"}
       </div>
 
       {error && !isListening && (

@@ -30,7 +30,7 @@ export type ExtractionLoopStatus = "idle" | "pending" | "error";
 
 export type UseExtractionLoopArgs = {
   isListening: boolean;
-  /** Full accumulated final transcript, from useSpeechRecognition. */
+  /** Full accumulated final transcript from Gemini STT. */
   transcriptFinal: string;
   existingClaims: Claim[];
   existingEdges: Edge[];

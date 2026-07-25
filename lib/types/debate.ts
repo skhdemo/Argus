@@ -86,3 +86,19 @@ export type ApiErrorBody = {
   error: string;
   code: "BAD_REQUEST" | "UPSTREAM" | "PARSE" | "MISSING_KEY";
 };
+
+/** One diarized utterance from Gemini audio transcription */
+export type TranscriptSegment = {
+  speaker: SpeakerId;
+  text: string;
+  /** Optional MM:SS-style offset within the audio chunk */
+  timestamp?: string;
+};
+
+export type TranscribeResponse = {
+  text: string;
+  segments: TranscriptSegment[];
+  inferredSpeaker: SpeakerId;
+  speakerConfidence: number;
+  notes?: string;
+};
