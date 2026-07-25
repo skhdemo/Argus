@@ -8,7 +8,8 @@
 export const SPEAKER_INSTRUCTIONS = `## Speaker / turn inference
 
 You are also labeling who spoke the new transcript chunk in a two-person debate.
-Participants are only Speaker A and Speaker B. Web Speech may lack diarization —
+Participants are only Speaker A and Speaker B. Mic audio is diarized by Gemini STT —
+
 infer turns from content and context (client hint + continuity).
 
 Rules:

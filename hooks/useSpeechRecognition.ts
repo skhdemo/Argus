@@ -8,47 +8,20 @@ import {
   useSyncExternalStore,
 } from "react";
 
-/**
- * Web Speech API types aren't in lib.dom.d.ts. Minimal ambient shape for the
- * handful of members this hook actually touches.
- */
-interface SpeechRecognitionResultLike {
-  isFinal: boolean;
-  0: { transcript: string };
-}
+import type {
+  ApiErrorBody,
+  SpeakerId,
+  TranscribeResponse,
+} from "@/lib/types/debate";
 
-interface SpeechRecognitionEventLike extends Event {
-  resultIndex: number;
-  results: ArrayLike<SpeechRecognitionResultLike>;
-}
-
-interface SpeechRecognitionErrorEventLike extends Event {
-  error: string;
-}
-
-interface SpeechRecognitionLike extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
-  onend: (() => void) | null;
-}
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionConstructor;
-    webkitSpeechRecognition?: SpeechRecognitionConstructor;
-  }
-}
+/** How long each mic slice is before we send it to Gemini (~live cadence). */
+const CHUNK_MS = 4000;
 
 export type FinalChunk = {
   text: string;
   timestamp: number;
+  speaker?: SpeakerId;
+  speakerConfidence?: number;
 };
 
 export type UseSpeechRecognitionResult = {
@@ -57,143 +30,280 @@ export type UseSpeechRecognitionResult = {
   stop: () => void;
   /** Full accumulated final transcript, space-joined. */
   transcriptFinal: string;
-  /** Current in-progress (not yet final) utterance. */
+  /**
+   * Status line while a chunk is uploading / being transcribed
+   * (replaces Web Speech interim results).
+   */
   transcriptInterim: string;
-  /** Final transcript as discrete timestamped chunks, for TranscriptPanel. */
   finalChunks: FinalChunk[];
+  /** Latest speaker from Gemini diarization (for extract hints). */
+  lastSpeaker: SpeakerId | null;
   error: string | null;
+  /** True when getUserMedia + MediaRecorder are available. */
   supported: boolean;
 };
 
-function getRecognitionCtor(): SpeechRecognitionConstructor | null {
-  if (typeof window === "undefined") return null;
-  return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
+function pickMimeType(): string | undefined {
+  if (typeof MediaRecorder === "undefined") return undefined;
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/mp4",
+  ];
+  return candidates.find((t) => MediaRecorder.isTypeSupported(t));
 }
 
-// Browser support never changes after mount, so no real subscription is needed.
+function getClientSupported(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    typeof navigator.mediaDevices?.getUserMedia === "function" &&
+    typeof MediaRecorder !== "undefined"
+  );
+}
+
 function subscribeNoop() {
   return () => {};
-}
-function getSupportedSnapshot() {
-  return getRecognitionCtor() !== null;
 }
 function getServerSupportedSnapshot() {
   return false;
 }
 
-// Chrome fires "no-speech" routinely during normal pauses — not a real error.
-const IGNORABLE_ERRORS = new Set(["no-speech", "aborted"]);
-
+/**
+ * Live speech capture via MediaRecorder → Gemini `/api/transcribe`
+ * (STT + speaker diarization). Replaces the Web Speech API path.
+ */
 export function useSpeechRecognition(): UseSpeechRecognitionResult {
   const [isListening, setIsListening] = useState(false);
   const [transcriptFinal, setTranscriptFinal] = useState("");
   const [transcriptInterim, setTranscriptInterim] = useState("");
   const [finalChunks, setFinalChunks] = useState<FinalChunk[]>([]);
+  const [lastSpeaker, setLastSpeaker] = useState<SpeakerId | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // window doesn't exist during SSR, so this can't be computed synchronously
-  // without a hydration mismatch — useSyncExternalStore forces the server
-  // snapshot (false) on first client render, then resolves after mount.
   const supported = useSyncExternalStore(
     subscribeNoop,
-    getSupportedSnapshot,
+    getClientSupported,
     getServerSupportedSnapshot,
   );
 
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  // Tracks intent (as opposed to isListening state, which lags a tick behind
-  // onend) so the restart-on-end handler knows whether to actually restart.
   const activeRef = useRef(false);
+  const wantStartRef = useRef(false);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const mimeRef = useRef<string | undefined>(undefined);
+  const lastSpeakerRef = useRef<SpeakerId | null>(null);
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
+  const chunkPartsRef = useRef<Blob[]>([]);
 
-  const ensureRecognition = useCallback((): SpeechRecognitionLike | null => {
-    if (recognitionRef.current) return recognitionRef.current;
-
-    const Ctor = getRecognitionCtor();
-    if (!Ctor) return null;
-
-    const recognition = new Ctor();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-
-    recognition.onresult = (event) => {
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        const text = result[0].transcript;
-        if (result.isFinal) {
-          const chunk = text.trim();
-          if (chunk) {
-            setTranscriptFinal((prev) => (prev ? `${prev} ${chunk}` : chunk));
-            setFinalChunks((prev) => [
-              ...prev,
-              { text: chunk, timestamp: Date.now() },
-            ]);
-          }
-        } else {
-          interim += text;
-        }
-      }
-      setTranscriptInterim(interim);
-    };
-
-    recognition.onerror = (event) => {
-      if (IGNORABLE_ERRORS.has(event.error)) return;
-
-      setError(event.error);
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        activeRef.current = false;
-        setIsListening(false);
-      }
-    };
-
-    recognition.onend = () => {
-      if (activeRef.current) {
-        // Chrome silently ends recognition after a pause even with
-        // continuous=true — restart to keep the session alive.
-        try {
-          recognition.start();
-        } catch {
-          // Already starting/started; ignore.
-        }
-      } else {
-        setIsListening(false);
-      }
-    };
-
-    recognitionRef.current = recognition;
-    return recognition;
+  const stopTracks = useCallback(() => {
+    recorderRef.current = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
   }, []);
 
+  const transcribeBlob = useCallback(async (blob: Blob) => {
+    if (blob.size < 256) return; // ignore near-empty slices
+
+    setTranscriptInterim("Transcribing with Gemini…");
+    const form = new FormData();
+    form.append("audio", blob, `chunk.${blob.type.includes("mp4") ? "mp4" : "webm"}`);
+    if (lastSpeakerRef.current) {
+      form.append("lastSpeaker", lastSpeakerRef.current);
+    }
+
+    try {
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        body: form,
+      });
+
+      if (!res.ok) {
+        const body = (await res.json()) as ApiErrorBody;
+        setError(body.error || "Transcription failed");
+        setTranscriptInterim("");
+        return;
+      }
+
+      const data = (await res.json()) as TranscribeResponse;
+      if (!data.segments.length && !data.text.trim()) {
+        setTranscriptInterim("");
+        return;
+      }
+
+      const now = Date.now();
+      const newChunks: FinalChunk[] = data.segments.length
+        ? data.segments.map((s) => ({
+            text: s.text,
+            timestamp: now,
+            speaker: s.speaker,
+            speakerConfidence: data.speakerConfidence,
+          }))
+        : [
+            {
+              text: data.text,
+              timestamp: now,
+              speaker: data.inferredSpeaker,
+              speakerConfidence: data.speakerConfidence,
+            },
+          ];
+
+      const appended = newChunks.map((c) => c.text).join(" ");
+      setFinalChunks((prev) => [...prev, ...newChunks]);
+      setTranscriptFinal((prev) => (prev ? `${prev} ${appended}` : appended));
+
+      if (data.inferredSpeaker !== "UNKNOWN") {
+        lastSpeakerRef.current = data.inferredSpeaker;
+        setLastSpeaker(data.inferredSpeaker);
+      } else if (newChunks.at(-1)?.speaker && newChunks.at(-1)!.speaker !== "UNKNOWN") {
+        const sp = newChunks.at(-1)!.speaker!;
+        lastSpeakerRef.current = sp;
+        setLastSpeaker(sp);
+      }
+
+      setError(null);
+      setTranscriptInterim("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Transcription request failed");
+      setTranscriptInterim("");
+    }
+  }, []);
+
+  const enqueueTranscribe = useCallback(
+    (blob: Blob) => {
+      queueRef.current = queueRef.current
+        .then(() => transcribeBlob(blob))
+        .catch(() => {
+          /* errors surfaced in state */
+        });
+    },
+    [transcribeBlob],
+  );
+
+  const startRecorderLoop = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream || !activeRef.current) return;
+
+    const mime = mimeRef.current;
+    const recorder = mime
+      ? new MediaRecorder(stream, { mimeType: mime })
+      : new MediaRecorder(stream);
+    recorderRef.current = recorder;
+    chunkPartsRef.current = [];
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunkPartsRef.current.push(event.data);
+    };
+
+    recorder.onstop = () => {
+      const parts = chunkPartsRef.current;
+      chunkPartsRef.current = [];
+      if (parts.length > 0) {
+        const blob = new Blob(parts, {
+          type: recorder.mimeType || mime || "audio/webm",
+        });
+        enqueueTranscribe(blob);
+      }
+      if (activeRef.current && streamRef.current) {
+        startRecorderLoop();
+      } else {
+        stopTracks();
+      }
+    };
+
+    recorder.onerror = () => {
+      setError("MediaRecorder error");
+      activeRef.current = false;
+      setIsListening(false);
+      stopTracks();
+    };
+
+    try {
+      recorder.start();
+      window.setTimeout(() => {
+        if (recorder.state === "recording") {
+          recorder.stop();
+        }
+      }, CHUNK_MS);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start recorder");
+      activeRef.current = false;
+      setIsListening(false);
+      stopTracks();
+    }
+  }, [enqueueTranscribe, stopTracks]);
+
   const start = useCallback(() => {
-    const recognition = ensureRecognition();
-    if (!recognition) {
+    if (!getClientSupported()) {
       setError("not-supported");
       return;
     }
+    if (wantStartRef.current || activeRef.current) return;
+
+    wantStartRef.current = true;
     setError(null);
-    activeRef.current = true;
-    try {
-      recognition.start();
-      setIsListening(true);
-    } catch {
-      // start() throws if already started; state is already correct.
-    }
-  }, [ensureRecognition]);
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        });
+        if (!wantStartRef.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        mimeRef.current = pickMimeType();
+        activeRef.current = true;
+        setIsListening(true);
+        setTranscriptInterim("Listening…");
+        startRecorderLoop();
+      } catch (err) {
+        wantStartRef.current = false;
+        const name = err instanceof Error ? err.name : "";
+        if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+          setError("not-allowed");
+        } else {
+          setError(err instanceof Error ? err.message : "Microphone error");
+        }
+        activeRef.current = false;
+        setIsListening(false);
+        stopTracks();
+      }
+    })();
+  }, [startRecorderLoop, stopTracks]);
 
   const stop = useCallback(() => {
+    wantStartRef.current = false;
     activeRef.current = false;
-    recognitionRef.current?.stop();
     setIsListening(false);
     setTranscriptInterim("");
-  }, []);
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      try {
+        recorder.stop();
+      } catch {
+        stopTracks();
+      }
+    } else {
+      stopTracks();
+    }
+  }, [stopTracks]);
 
   useEffect(() => {
     return () => {
+      wantStartRef.current = false;
       activeRef.current = false;
-      recognitionRef.current?.stop();
+      try {
+        recorderRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
+      stopTracks();
     };
-  }, []);
+  }, [stopTracks]);
 
   return {
     isListening,
@@ -202,6 +312,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionResult {
     transcriptFinal,
     transcriptInterim,
     finalChunks,
+    lastSpeaker,
     error,
     supported,
   };

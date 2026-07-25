@@ -17,6 +17,13 @@ function formatTime(timestamp: number): string {
   });
 }
 
+function speakerLabel(chunk: FinalChunk): string | null {
+  if (!chunk.speaker || chunk.speaker === "UNKNOWN") return null;
+  const hedged =
+    chunk.speakerConfidence !== undefined && chunk.speakerConfidence < 0.55;
+  return hedged ? `Speaker ${chunk.speaker}?` : `Speaker ${chunk.speaker}`;
+}
+
 export function TranscriptPanel({ chunks, interim }: TranscriptPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -35,14 +42,29 @@ export function TranscriptPanel({ chunks, interim }: TranscriptPanelProps) {
         {isEmpty && (
           <p className="text-sm text-muted">Waiting for speech…</p>
         )}
-        {chunks.map((chunk, i) => (
-          <p key={`${chunk.timestamp}-${i}`} className="text-sm leading-relaxed">
-            <span className="mr-2 font-mono text-xs text-muted">
-              {formatTime(chunk.timestamp)}
-            </span>
-            {chunk.text}
-          </p>
-        ))}
+        {chunks.map((chunk, i) => {
+          const label = speakerLabel(chunk);
+          return (
+            <p key={`${chunk.timestamp}-${i}`} className="text-sm leading-relaxed">
+              <span className="mr-2 font-mono text-xs text-muted">
+                {formatTime(chunk.timestamp)}
+              </span>
+              {label && (
+                <span
+                  className={`mr-2 font-mono text-xs ${
+                    chunk.speakerConfidence !== undefined &&
+                    chunk.speakerConfidence < 0.55
+                      ? "text-muted opacity-70"
+                      : "text-accent"
+                  }`}
+                >
+                  {label}
+                </span>
+              )}
+              {chunk.text}
+            </p>
+          );
+        })}
         {interim && (
           <p className="text-sm italic leading-relaxed text-muted">
             {interim}

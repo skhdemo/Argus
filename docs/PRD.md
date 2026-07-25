@@ -54,7 +54,7 @@ Hackathon judges and audience (viewers of the demo); the two debate participants
 | Model | Gemini 3+ (latest available Gemini 3-series model) via `@google/genai` — **all** AI work |
 | Speaker detection | No manual toggle. Inferred each extraction cycle — diarization signal if available, else Gemini turn inference from transcript |
 | Graph | `react-force-graph-2d` (preferred) or `d3-force` + SVG |
-| Voice | Web Speech API (Chrome, no key) |
+| Voice | MediaRecorder (browser mic) → Gemini audio STT + speaker diarization via `/api/transcribe` |
 | Styling | Tailwind CSS |
 | Deploy | Vercel |
 
@@ -94,7 +94,8 @@ hooks/
 ### Known gotchas
 
 - `react-force-graph` touches `window` → dynamic import with `ssr: false`.
-- Web Speech API is browser-only → `'use client'` + guard `window.webkitSpeechRecognition`.
+- MediaRecorder is browser-only → `'use client'` + guard `navigator.mediaDevices.getUserMedia`.
+- Gemini STT adds latency (~chunk length + model time); tune chunk size for demo cadence.
 - Automatic speaker inference is less reliable than a manual toggle — show confidence hedging in UI (e.g. "Speaker A?" + lower opacity) so misattribution doesn't look like a stage bug.
 - Extraction prompt quality + speaker attribution are the two make-or-break hard problems. Budget real time for both.
 
@@ -115,7 +116,7 @@ The extraction prompt (claim / contradiction / evidence detection) remains make-
 
 ### Must Have
 
-- Continuous browser speech-to-text via Web Speech API (Chrome), no manual speaker controls.
+- Continuous mic capture via MediaRecorder → Gemini `/api/transcribe` (STT + speaker diarization), no manual speaker controls.
 - Automatic speaker/turn inference (no click/keypress toggle).
 - `/api/extract` calling Gemini 3+ with `{ text, inferred_speaker, existing_claims }`, returning structured JSON (claims, evidence, edges).
 - Live force-directed graph rendering nodes as they're extracted.
