@@ -27,6 +27,13 @@
   --claim-assumption: #d29922;
   --claim-needs-evidence: #f85149;
   --claim-counterargument: #4a9eff;
+
+  /* Speaker identity (lane header, thread line, momentum background) — kept
+     as separate tokens from --claim-counterargument and --danger even
+     though the hues are close, so speaker-identity and claim-type/error
+     meanings can be retuned independently later. */
+  --speaker-a: #3b82f6;
+  --speaker-b: #ef4444;
 }
 
 @theme inline {
@@ -43,6 +50,9 @@
   --color-claim-needs-evidence: var(--claim-needs-evidence);
   --color-claim-counterargument: var(--claim-counterargument);
 
+  --color-speaker-a: var(--speaker-a);
+  --color-speaker-b: var(--speaker-b);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -51,4 +61,43 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/*
+ * Momentum-driven background for the debate area. --momentum-a/--momentum-b
+ * (0..1, set from hooks/useMomentum.ts) drive two blurred radial blobs whose
+ * opacity/scale lean toward whichever speaker currently has more supported
+ * claims. Pure CSS transition — no animation loop, no JS per frame.
+ */
+.momentum-backdrop {
+  --momentum-a: 0.5;
+  --momentum-b: 0.5;
+}
+
+.momentum-backdrop::before,
+.momentum-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  border-radius: 9999px;
+  filter: blur(80px);
+  pointer-events: none;
+  transition:
+    opacity 700ms ease,
+    transform 700ms ease;
+  z-index: 0;
+}
+
+.momentum-backdrop::before {
+  left: 0;
+  background: var(--speaker-a);
+  opacity: calc(0.15 + var(--momentum-a) * 0.35);
+  transform: scale(calc(0.8 + var(--momentum-a) * 0.6));
+}
+
+.momentum-backdrop::after {
+  right: 0;
+  background: var(--speaker-b);
+  opacity: calc(0.15 + var(--momentum-b) * 0.35);
+  transform: scale(calc(0.8 + var(--momentum-b) * 0.6));
 }
