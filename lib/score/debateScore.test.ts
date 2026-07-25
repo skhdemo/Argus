@@ -1,16 +1,34 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CLAIM_BASE,
+  CLAIM_NATURE_BASE,
   DECISIVE_LEADER_SHARE,
+  EVIDENCE_POSITIVE_CAP,
+  EVIDENCE_UNIT_MULTIPLIER,
+  RELEVANCE_WEIGHT,
+  VERIFICATION_WEIGHT,
+  accumulateEvidenceShares,
   computeDebateScore,
+  evidenceUnit,
   normalizeSpeakerScores,
   scoreClaim,
 } from "@/lib/score";
-import type { Claim, Edge } from "@/lib/types/debate";
+import type {
+  Claim,
+  Evidence,
+  EvidenceVerification,
+  Relation,
+} from "@/lib/types/debate";
+
+function verification(
+  partial: Pick<EvidenceVerification, "status" | "relevance"> &
+    Partial<EvidenceVerification>,
+): EvidenceVerification {
+  return { sources: [], ...partial };
+}
 
 function claim(
-  partial: Pick<Claim, "id" | "speaker" | "type"> & Partial<Claim>,
+  partial: Pick<Claim, "id" | "speaker" | "nature"> & Partial<Claim>,
 ): Claim {
   return {
     text: partial.text ?? partial.id,
@@ -19,55 +37,62 @@ function claim(
   };
 }
 
-function edge(
-  partial: Pick<Edge, "id" | "from" | "to" | "type">,
-): Edge {
+function evidenceItem(
+  partial: Pick<Evidence, "id" | "supportsClaimIds"> &
+    Partial<Evidence> & { verification?: EvidenceVerification },
+): Evidence {
+  return {
+    text: partial.text ?? partial.id,
+    speaker: partial.speaker ?? "A",
+    kind: partial.kind ?? "factual_claim",
+    createdAt: partial.createdAt ?? 1,
+    verification:
+      partial.verification ??
+      verification({ status: "pending", relevance: "pending" }),
+    ...partial,
+  };
+}
+
+function relation(
+  partial: Pick<Relation, "id" | "from" | "to" | "type">,
+): Relation {
   return partial;
 }
 
-describe("scoreClaim", () => {
-  it("uses CLAIM_BASE for each type", () => {
-    for (const type of Object.keys(CLAIM_BASE) as (keyof typeof CLAIM_BASE)[]) {
-      const result = scoreClaim(
-        claim({ id: "c", speaker: "A", type }),
-        true,
-      );
-      expect(result.base).toBe(CLAIM_BASE[type]);
-    }
+describe("evidenceUnit", () => {
+  it("pending × pending × multiplier = 0.1875", () => {
+    expect(
+      evidenceUnit(
+        evidenceItem({
+          id: "ev",
+          supportsClaimIds: ["c1"],
+          verification: verification({
+            status: "pending",
+            relevance: "pending",
+          }),
+        }),
+      ),
+    ).toBeCloseTo(
+      VERIFICATION_WEIGHT.pending *
+        RELEVANCE_WEIGHT.pending *
+        EVIDENCE_UNIT_MULTIPLIER,
+      10,
+    );
   });
 
-  it("applies unsupported + needs_evidence + fallacy penalties", () => {
-    const result = scoreClaim(
-      claim({
-        id: "c",
-        speaker: "A",
-        type: "needs_evidence",
-        unsupported: true,
-        fallacies: ["strawman", "ad_hominem"],
-      }),
-      false,
-    );
-    // base -1; unsupported -1.5; no-support -1; 2 fallacies -2 → total -5.5
-    expect(result.penalties).toBe(-1.5 - 1 - 2);
-    expect(result.total).toBe(-1 + result.penalties);
-  });
-
-  it("caps fallacy penalty at 3", () => {
-    const result = scoreClaim(
-      claim({
-        id: "c",
-        speaker: "A",
-        type: "assumption",
-        fallacies: [
-          "strawman",
-          "ad_hominem",
-          "circular_reasoning",
-          "false_dilemma",
-        ],
-      }),
-      true,
-    );
-    expect(result.penalties).toBe(-3);
+  it("irrelevant corroborated contributes zero", () => {
+    expect(
+      evidenceUnit(
+        evidenceItem({
+          id: "ev",
+          supportsClaimIds: ["c1"],
+          verification: verification({
+            status: "corroborated",
+            relevance: "irrelevant",
+          }),
+        }),
+      ),
+    ).toBe(0);
   });
 });
 
@@ -81,10 +106,9 @@ describe("normalizeSpeakerScores", () => {
   });
 
   it("floor-shifts negatives and marks decisive leads", () => {
-    const n = normalizeSpeakerScores(-5.5, 5.5);
+    const n = normalizeSpeakerScores(-1.5, 4);
     expect(n.massA).toBe(0);
-    expect(n.massB).toBe(11);
-    expect(n.ratioB).toBe(1);
+    expect(n.massB).toBe(5.5);
     expect(n.leader).toBe("B");
     expect(n.isDecisive).toBe(true);
     expect(n.leaderShare).toBeGreaterThanOrEqual(DECISIVE_LEADER_SHARE);
@@ -92,132 +116,355 @@ describe("normalizeSpeakerScores", () => {
   });
 });
 
-describe("computeDebateScore — worked proofs from DEBATE_SCORING.md", () => {
-  it("micro debate: B slightly ahead", () => {
-    const claims: Claim[] = [
+describe("computeDebateScore — Messi worked example", () => {
+  it("one claim + one pending evidence → documented arithmetic", () => {
+    const claims = [
       claim({
-        id: "c1",
+        id: "c_messi",
         speaker: "A",
-        type: "needs_evidence",
-        text: "Remote should be default",
-      }),
-      claim({
-        id: "c2",
-        speaker: "A",
-        type: "supported",
-        text: "Study shows +4% productivity",
-      }),
-      claim({
-        id: "c3",
-        speaker: "B",
-        type: "counterargument",
-        text: "Office better for collab",
+        nature: "argument",
+        text: "Messi is better",
       }),
     ];
-    const edges: Edge[] = [
-      edge({ id: "e1", from: "c2", to: "c1", type: "supports" }),
-      edge({ id: "e2", from: "c3", to: "c1", type: "contradicts" }),
+    const evidence = [
+      evidenceItem({
+        id: "ev_messi",
+        speaker: "A",
+        supportsClaimIds: ["c_messi"],
+        kind: "factual_claim",
+        text: "He won a World Cup and two Copa Américas",
+        verification: verification({
+          status: "pending",
+          relevance: "pending",
+        }),
+      }),
     ];
 
-    const result = computeDebateScore(claims, edges);
+    const result = computeDebateScore(claims, evidence, []);
 
-    // Raw_A = -1 + 3 + 2 = 4; Raw_B = 2 + 3.5 = 5.5 (rebuttal on needs_evidence)
-    expect(result.rawA).toBe(4);
-    expect(result.rawB).toBe(5.5);
-    expect(result.undercutA).toBe(0);
-    expect(result.leader).toBe("B");
-    expect(result.isDecisive).toBe(false);
-    expect(result.scoreA).toBe(42);
-    expect(result.scoreB).toBe(58);
+    // Evidence is never a second claim
+    expect(result.claimScores).toHaveLength(1);
+    expect(result.evidenceScores).toHaveLength(1);
+
+    // unit = 0.25 × 0.50 × 1.5 = 0.1875
+    // S = 1 + 0.1875 = 1.1875
+    expect(result.evidenceScores[0].unitTotal).toBeCloseTo(0.1875, 10);
+    expect(result.claimScores[0].base).toBe(CLAIM_NATURE_BASE.argument);
+    expect(result.claimScores[0].evidenceContribution).toBeCloseTo(0.1875, 10);
+    expect(result.claimScores[0].unsupportedPenalty).toBe(0);
+    expect(result.rawA).toBeCloseTo(1.1875, 10);
+    expect(result.rawB).toBe(0);
+    expect(result.scoreA).toBe(100);
+    expect(result.scoreB).toBe(0);
     expect(result.scoreA + result.scoreB).toBe(100);
+    expect(result.leader).toBe("A");
   });
 
-  it("unsupported fallacy undercut: B decisive", () => {
-    const claims: Claim[] = [
-      claim({
-        id: "cA",
-        speaker: "A",
-        type: "needs_evidence",
-        unsupported: true,
-        fallacies: ["strawman"],
-      }),
-      claim({
-        id: "cB",
-        speaker: "B",
-        type: "counterargument",
-      }),
-    ];
-    const edges: Edge[] = [
-      edge({ id: "e", from: "cB", to: "cA", type: "contradicts" }),
-    ];
-
-    const result = computeDebateScore(claims, edges);
-
-    // A: -1 -1.5 -1 -1 (claim) -1 undercut = -5.5
-    // B: +2 + 3.5 edge = 5.5
-    expect(result.rawA).toBe(-5.5);
-    expect(result.rawB).toBe(5.5);
-    expect(result.undercutA).toBe(1);
-    expect(result.leader).toBe("B");
-    expect(result.ratioB).toBe(1);
-    expect(result.isDecisive).toBe(true);
-    expect(result.scoreA + result.scoreB).toBe(100);
+  it("corroborated strong Messi evidence raises contribution to 1.5", () => {
+    const result = computeDebateScore(
+      [
+        claim({
+          id: "c_messi",
+          speaker: "A",
+          nature: "argument",
+          text: "Messi is better",
+        }),
+      ],
+      [
+        evidenceItem({
+          id: "ev_messi",
+          supportsClaimIds: ["c_messi"],
+          verification: verification({
+            status: "corroborated",
+            relevance: "strong",
+          }),
+        }),
+      ],
+      [],
+    );
+    expect(result.claimScores[0].evidenceContribution).toBeCloseTo(1.5, 10);
+    expect(result.rawA).toBeCloseTo(2.5, 10);
   });
 });
 
-describe("computeDebateScore — invariants", () => {
-  it("ignores UNKNOWN speakers", () => {
-    const claims: Claim[] = [
-      claim({ id: "u", speaker: "UNKNOWN", type: "supported" }),
-      claim({ id: "a", speaker: "A", type: "assumption" }),
-    ];
-    const edges: Edge[] = [
-      edge({ id: "e", from: "u", to: "a", type: "supports" }),
-    ];
-    const result = computeDebateScore(claims, edges);
-    // Only A's assumption +0.5; UNKNOWN claim/edge ignored
-    expect(result.rawA).toBe(0.5);
-    expect(result.rawB).toBe(0);
-  });
-
-  it("swapping A↔B speakers mirrors raw scores", () => {
-    const claims: Claim[] = [
-      claim({ id: "c1", speaker: "A", type: "supported" }),
-      claim({ id: "c2", speaker: "B", type: "needs_evidence" }),
-    ];
-    const edges: Edge[] = [
-      edge({ id: "e", from: "c1", to: "c2", type: "contradicts" }),
-    ];
-    const original = computeDebateScore(claims, edges);
-
-    const swappedClaims = claims.map((c) => ({
-      ...c,
-      speaker:
-        c.speaker === "A" ? ("B" as const) : c.speaker === "B" ? ("A" as const) : c.speaker,
-    }));
-    const swapped = computeDebateScore(swappedClaims, edges);
-
-    expect(swapped.rawA).toBe(original.rawB);
-    expect(swapped.rawB).toBe(original.rawA);
-    expect(swapped.ratioA).toBeCloseTo(original.ratioB, 10);
-  });
-
-  it("adding a supports edge from A does not decrease rawA", () => {
-    const claims: Claim[] = [
-      claim({ id: "c1", speaker: "A", type: "needs_evidence" }),
-      claim({ id: "c2", speaker: "A", type: "supported" }),
-    ];
-    const before = computeDebateScore(claims, []);
-    const after = computeDebateScore(claims, [
-      edge({ id: "e", from: "c2", to: "c1", type: "supports" }),
-    ]);
-    expect(after.rawA).toBeGreaterThanOrEqual(before.rawA);
-  });
-
-  it("empty graph is a tie", () => {
-    const result = computeDebateScore([], []);
+describe("computeDebateScore — required invariants", () => {
+  it("empty graph gives 50/50", () => {
+    const result = computeDebateScore([], [], []);
     expect(result.leader).toBe("tied");
     expect(result.scoreA).toBe(50);
     expect(result.scoreB).toBe(50);
+    expect(result.scoreA + result.scoreB).toBe(100);
+  });
+
+  it("UNKNOWN speakers contribute zero", () => {
+    const result = computeDebateScore(
+      [
+        claim({ id: "u", speaker: "UNKNOWN", nature: "argument" }),
+        claim({ id: "a", speaker: "A", nature: "argument" }),
+      ],
+      [
+        evidenceItem({
+          id: "ev",
+          speaker: "UNKNOWN",
+          supportsClaimIds: ["u"],
+          verification: verification({
+            status: "corroborated",
+            relevance: "strong",
+          }),
+        }),
+      ],
+      [
+        relation({
+          id: "r",
+          from: "u",
+          to: "a",
+          type: "counters",
+        }),
+      ],
+    );
+    // Only A's bare argument: 1 - 1.5 = -0.5
+    expect(result.rawA).toBeCloseTo(-0.5, 10);
+    expect(result.rawB).toBe(0);
+  });
+
+  it("A/B swap mirrors score", () => {
+    const claims = [
+      claim({ id: "c1", speaker: "A", nature: "argument" }),
+      claim({ id: "c2", speaker: "B", nature: "counterargument" }),
+    ];
+    const evidence = [
+      evidenceItem({
+        id: "ev",
+        supportsClaimIds: ["c1"],
+        verification: verification({
+          status: "corroborated",
+          relevance: "strong",
+        }),
+      }),
+    ];
+    const relations = [
+      relation({ id: "r", from: "c2", to: "c1", type: "counters" }),
+    ];
+    const original = computeDebateScore(claims, evidence, relations);
+    const swappedClaims = claims.map((c) => ({
+      ...c,
+      speaker:
+        c.speaker === "A"
+          ? ("B" as const)
+          : c.speaker === "B"
+            ? ("A" as const)
+            : c.speaker,
+    }));
+    const swapped = computeDebateScore(swappedClaims, evidence, relations);
+    expect(swapped.rawA).toBeCloseTo(original.rawB, 10);
+    expect(swapped.rawB).toBeCloseTo(original.rawA, 10);
+    expect(swapped.ratioA).toBeCloseTo(original.ratioB, 10);
+    expect(swapped.scoreA + swapped.scoreB).toBe(100);
+  });
+
+  it("unsupported penalty is applied once", () => {
+    const result = computeDebateScore(
+      [claim({ id: "c1", speaker: "A", nature: "argument" })],
+      [],
+      [],
+    );
+    expect(result.claimScores[0].unsupportedPenalty).toBe(-1.5);
+    expect(result.claimScores[0].total).toBeCloseTo(1 - 1.5, 10);
+    expect(result.rawA).toBeCloseTo(-0.5, 10);
+  });
+
+  it("Evidence is never counted as a Claim", () => {
+    const result = computeDebateScore(
+      [claim({ id: "c1", speaker: "A", nature: "argument" })],
+      [
+        evidenceItem({
+          id: "ev1",
+          supportsClaimIds: ["c1"],
+          text: "trophy justification",
+        }),
+      ],
+      [],
+    );
+    expect(result.claimScores).toHaveLength(1);
+    expect(result.claimScores[0].base).toBe(1);
+    // No second +1 claim base for the evidence text
+    expect(result.rawA).toBeLessThan(3);
+  });
+
+  it("one Evidence supporting multiple Claims does not multiply total contribution", () => {
+    const { shareByClaim, evidenceScores } = accumulateEvidenceShares([
+      evidenceItem({
+        id: "ev",
+        supportsClaimIds: ["c1", "c2"],
+        verification: verification({
+          status: "corroborated",
+          relevance: "strong",
+        }),
+      }),
+    ]);
+    expect(evidenceScores[0].unitTotal).toBeCloseTo(1.5, 10);
+    expect(evidenceScores[0].perTargetShare).toBeCloseTo(0.75, 10);
+    expect(shareByClaim.get("c1")).toBeCloseTo(0.75, 10);
+    expect(shareByClaim.get("c2")).toBeCloseTo(0.75, 10);
+    // Total across claims equals one unit, not 2×
+    expect(
+      (shareByClaim.get("c1") ?? 0) + (shareByClaim.get("c2") ?? 0),
+    ).toBeCloseTo(1.5, 10);
+  });
+
+  it("contested Evidence reduces support", () => {
+    const withPending = computeDebateScore(
+      [claim({ id: "c1", speaker: "A", nature: "argument" })],
+      [
+        evidenceItem({
+          id: "ev",
+          supportsClaimIds: ["c1"],
+          verification: verification({
+            status: "pending",
+            relevance: "pending",
+          }),
+        }),
+      ],
+      [],
+    );
+    const withContested = computeDebateScore(
+      [claim({ id: "c1", speaker: "A", nature: "argument" })],
+      [
+        evidenceItem({
+          id: "ev",
+          supportsClaimIds: ["c1"],
+          verification: verification({
+            status: "contested",
+            relevance: "strong",
+          }),
+        }),
+      ],
+      [],
+    );
+    // contested unit = -0.5 × 1.0 × 1.5 = -0.75
+    expect(withContested.claimScores[0].evidenceContribution).toBeCloseTo(
+      -0.75,
+      10,
+    );
+    expect(withContested.rawA).toBeLessThan(withPending.rawA);
+  });
+
+  it("pending Evidence is provisional (positive but small)", () => {
+    const result = computeDebateScore(
+      [claim({ id: "c1", speaker: "A", nature: "argument" })],
+      [
+        evidenceItem({
+          id: "ev",
+          supportsClaimIds: ["c1"],
+          verification: verification({
+            status: "pending",
+            relevance: "pending",
+          }),
+        }),
+      ],
+      [],
+    );
+    expect(result.claimScores[0].evidenceContribution).toBeGreaterThan(0);
+    expect(result.claimScores[0].evidenceContribution).toBeLessThan(0.5);
+    expect(result.claimScores[0].unsupportedPenalty).toBe(0);
+  });
+
+  it("Evidence caps prevent spam", () => {
+    const spam = Array.from({ length: 10 }, (_, i) =>
+      evidenceItem({
+        id: `ev${i}`,
+        supportsClaimIds: ["c1"],
+        verification: verification({
+          status: "corroborated",
+          relevance: "strong",
+        }),
+      }),
+    );
+    const result = computeDebateScore(
+      [claim({ id: "c1", speaker: "A", nature: "argument" })],
+      spam,
+      [],
+    );
+    expect(result.claimScores[0].evidenceContribution).toBe(
+      EVIDENCE_POSITIVE_CAP,
+    );
+  });
+
+  it("fallacy caps work", () => {
+    const result = scoreClaim(
+      claim({
+        id: "c1",
+        speaker: "A",
+        nature: "argument",
+        fallacies: [
+          "strawman",
+          "ad_hominem",
+          "circular_reasoning",
+          "false_dilemma",
+        ],
+      }),
+      [],
+      new Map(),
+    );
+    expect(result.fallacyPenalty).toBe(-3);
+  });
+
+  it("counterargument attack is not double-counted", () => {
+    // Nature base +1; attack credit only from relation (+2), not a second nature bonus
+    const result = computeDebateScore(
+      [
+        claim({ id: "cA", speaker: "A", nature: "argument" }),
+        claim({ id: "cB", speaker: "B", nature: "counterargument" }),
+      ],
+      [],
+      [relation({ id: "r", from: "cB", to: "cA", type: "counters" })],
+    );
+    const bClaim = result.claimScores.find((c) => c.claimId === "cB")!;
+    expect(bClaim.base).toBe(1);
+    expect(result.relationScores).toHaveLength(1);
+    expect(result.relationScores[0].credit).toBe(2);
+    // B: claim 1-1.5 (unsupported) + relation 2+1 rebuttal = 2.5
+    // A: claim 1-1.5 = -0.5, undercut -1 → -1.5
+    expect(result.rawB).toBeCloseTo(-0.5 + 2 + 1, 10);
+    expect(result.rawA).toBeCloseTo(-0.5 - 1, 10);
+    expect(result.undercutA).toBe(1);
+  });
+
+  it("scoreA + scoreB is always 100", () => {
+    const cases: Array<{
+      claims: Claim[];
+      evidence: Evidence[];
+      relations: Relation[];
+    }> = [
+      { claims: [], evidence: [], relations: [] },
+      {
+        claims: [claim({ id: "c", speaker: "A", nature: "argument" })],
+        evidence: [],
+        relations: [],
+      },
+      {
+        claims: [
+          claim({ id: "c1", speaker: "A", nature: "argument" }),
+          claim({ id: "c2", speaker: "B", nature: "counterargument" }),
+        ],
+        evidence: [
+          evidenceItem({
+            id: "ev",
+            supportsClaimIds: ["c1"],
+            verification: verification({
+              status: "corroborated",
+              relevance: "moderate",
+            }),
+          }),
+        ],
+        relations: [
+          relation({ id: "r", from: "c2", to: "c1", type: "responds_to" }),
+        ],
+      },
+    ];
+    for (const c of cases) {
+      const result = computeDebateScore(c.claims, c.evidence, c.relations);
+      expect(result.scoreA + result.scoreB).toBe(100);
+    }
   });
 });

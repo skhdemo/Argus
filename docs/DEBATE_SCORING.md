@@ -1,22 +1,23 @@
-# Debate scoring formula
+# Debate scoring formula (claim–evidence v2)
 
 Implementation: [`lib/score/debateScore.ts`](../lib/score/debateScore.ts)  
+Derived status: [`lib/debate/status.ts`](../lib/debate/status.ts)  
 API: `POST /api/score` (no Gemini) · also embedded on `POST /api/summary` as `debateScore`  
 Tests: [`lib/score/debateScore.test.ts`](../lib/score/debateScore.test.ts)
 
 ## What "winning" means
 
-Argus scores **argument structure**, not factual truth.
+Argus scores **argument structure + speaker-provided evidence quality signals**, not claim true/false.
 
-A speaker is ahead when their Gemini-labeled claims and edges show:
+A speaker is ahead when their graph shows:
 
-- more well-supported positions
-- stronger attack / engage moves
-- fewer unsupported or fallacious points
+- more Claims with attached Evidence (especially corroborated + relevant)
+- stronger counter / response moves
+- fewer unsupported or fallacious Claims
 
-Speaker labels come from **Gemini audio diarization → extract** (`claim.speaker` ∈ `A` | `B`). Claims with `UNKNOWN` contribute **0**.
+Speaker labels come from **Gemini audio diarization → extract** (`claim.speaker` ∈ `A` | `B`). Claims with `UNKNOWN` contribute **0**. Evidence contribution is credited to the **Claim speaker** after splitting across `supportsClaimIds`.
 
-This is **deterministic graph math**. No Gemini call is used for the numeric score (keeps the live loop fast and stable).
+This is **deterministic graph math**. No Gemini call is used for the numeric score.
 
 ---
 
@@ -25,15 +26,11 @@ This is **deterministic graph math**. No Gemini call is used for the numeric sco
 ```text
 Mic audio
   → POST /api/transcribe (Gemini STT + diarization)
-  → transcript segments with speaker A/B
-  → POST /api/extract (Gemini structure)
-  → claims[] + edges[]  (each claim has speaker)
-  → computeDebateScore(claims, edges)   ← this doc
+  → POST /api/extract (claims + evidence + relations)
+  → optional POST /api/verify-evidence (updates Evidence.verification)
+  → computeDebateScore(claims, evidence, relations)
   → rawA/rawB → ratioA/ratioB → scoreA/scoreB (0–100)
 ```
-
-Frontend currently still uses a placeholder in `hooks/useMomentum.ts`.  
-Backend truth lives in `lib/score/*` and `POST /api/score`. FE can switch later by importing the lib or calling the API.
 
 ---
 
@@ -41,80 +38,107 @@ Backend truth lives in `lib/score/*` and `POST /api/score`. FE can switch later 
 
 | Symbol | Meaning |
 |---|---|
-| \(c\) | A claim node |
-| \(e\) | An edge (`from` → `to`) |
-| \(B(c)\) | Base points by claim type |
-| \(P(c)\) | Soft penalties (≤ 0) |
-| \(S_{\text{claim}}(c)\) | \(B(c) + P(c)\) |
-| \(E(e)\) | Edge credit to speaker of `from` |
+| \(c\) | A Claim node |
+| \(v\) | An Evidence item (never a node) |
+| \(r\) | A Relation (`counters` \| `responds_to`) |
+| \(B(c)\) | Base points by Claim nature |
+| \(V(v)\) | Evidence unit before split |
+| \(E(c)\) | Clamped Evidence contribution on Claim |
+| \(P(c)\) | Soft penalties (unsupported + fallacies) |
+| \(R(r)\) | Relation credit (+ rebuttal) |
 | \(\mathrm{Raw}_A, \mathrm{Raw}_B\) | Speaker totals before normalization |
 
 ---
 
-## 1. Claim base \(B(c)\)
+## 1. Claim nature base \(B(c)\)
 
-| `claim.type` | \(B(c)\) |
+| `claim.nature` | \(B(c)\) |
 |---|---|
-| `supported` | **+3** |
-| `counterargument` | **+2** |
-| `assumption` | **+0.5** |
-| `needs_evidence` | **−1** |
+| `argument` | **+1** |
+| `counterargument` | **+1** |
 
-Constants: `CLAIM_BASE` in `lib/score/constants.ts`.
+Nature is rhetorical role only. Support is **not** a Claim type.  
+Counterargument does **not** get an extra attack bonus — attack credit comes only from Relations.
+
+Constants: `CLAIM_NATURE_BASE` in `lib/score/constants.ts`.
 
 ---
 
-## 2. Soft penalties \(P(c)\) (subtract)
+## 2. Evidence contribution
 
-Let \(P(c) \le 0\).
+For each Evidence item \(v\):
+
+\[
+V(v) = w_{\text{ver}}(v) \cdot w_{\text{rel}}(v) \cdot 1.5
+\]
+
+### Verification weights \(w_{\text{ver}}\)
+
+| `verification.status` | Weight |
+|---|---|
+| `pending` | **+0.25** |
+| `corroborated` | **+1.0** |
+| `contested` | **−0.5** |
+| `inconclusive` | **+0.15** |
+| `not_verifiable` | **+0.20** |
+| `error` | **+0.25** (infra failure must not punish the speaker) |
+
+### Relevance weights \(w_{\text{rel}}\)
+
+| `verification.relevance` | Weight |
+|---|---|
+| `pending` | **0.50** |
+| `strong` | **1.0** |
+| `moderate` | **0.70** |
+| `weak` | **0.30** |
+| `irrelevant` | **0** |
+
+### Split across targets
+
+\(V(v)\) is split **evenly** across `supportsClaimIds` so one citation cannot multiply by targeting many Claims.
+
+### Cap per Claim
+
+Sum of Evidence shares on Claim \(c\) is clamped to:
+
+- positive cap **+3**
+- negative floor **−1.5**
+
+That clamped sum is \(E(c)\).
+
+---
+
+## 3. Soft penalties \(P(c)\)
 
 | Condition | Penalty |
 |---|---|
-| `unsupported === true` | **−1.5** |
-| `type === needs_evidence` **and** no inbound `supports` edge | **−1** |
+| No Evidence references \(c\) (`unsupported`) | **−1.5** once |
 | Each entry in `fallacies[]` | **−1** each, **capped at −3** |
 
 \[
-S_{\text{claim}}(c) = B(c) + P(c)
+S_{\text{claim}}(c) = B(c) + E(c) + P(c)
 \]
 
-Sum \(S_{\text{claim}}\) into \(\mathrm{Raw}_A\) or \(\mathrm{Raw}_B\) by `claim.speaker`.
+Sum into \(\mathrm{Raw}_A\) / \(\mathrm{Raw}_B\) by `claim.speaker`.
 
 ---
 
-## 3. Edge credits \(E(e)\)
+## 4. Relation credits \(R(r)\)
 
-Credit the **speaker of the claim at `edge.from`** (the person making the move):
+Credit the **speaker of the Claim at `relation.from`**:
 
-| `edge.type` | Credit |
+| `relation.type` | Credit |
 |---|---|
-| `supports` | **+2** |
-| `contradicts` | **+2.5** |
+| `counters` | **+2** |
 | `responds_to` | **+1** |
 
-**Rebuttal bonus (+1)** when:
+**Rebuttal bonus (+1)** when the target Claim’s speaker is the opponent **and** that target is `unsupported` (no attached Evidence).
 
-- edge is `contradicts` or `responds_to`, **and**
-- target claim’s speaker is the **opponent**, **and**
-- target is “weak”: `unsupported === true` **or** `type === needs_evidence`
-
-\[
-E(e) = \text{credit}(e) + \text{rebuttalBonus}(e)
-\]
-
----
-
-## 4. Undercut penalty
-
-For each `contradicts` edge from opponent → your claim \(c\):
-
-- if \(c\) has **no** inbound `supports` edge → subtract **1** from \(c\)’s speaker.
+**Undercut (−1)** on the target’s speaker for each `counters` Relation against an unsupported opponent Claim.
 
 ---
 
 ## 5. Normalization → UI ratios and 0–100 scores
-
-Shift into non-negative mass so negative totals still compare fairly:
 
 \[
 \begin{align*}
@@ -144,71 +168,70 @@ Otherwise:
 
 ---
 
-## Worked proof 1 — micro debate
+## Worked proof — Messi (claim ≠ evidence)
 
-Graph:
+Transcript: “Messi is better because he won a World Cup and two Copa Américas.”
 
-1. `c1` speaker **A**, `needs_evidence` — “Remote should be default”
-2. `c2` speaker **A**, `supported` — study / evidence
-3. `e1`: `c2 -supports-> c1`
-4. `c3` speaker **B**, `counterargument` — “Office better”
-5. `e2`: `c3 -contradicts-> c1`
+Graph (correct extract):
 
-Inbound support set includes `c1` (via `e1`).
+1. Claim `c_messi` speaker **A**, `nature: argument` — “Messi is better”
+2. Evidence `ev_messi` → supports `[c_messi]`, `kind: factual_claim`
+3. `verification.status = pending`, `relevance = pending`
+4. Relations: none
 
-| Claim | \(B\) | \(P\) | \(S\) |
-|---|---|---|---|
-| c1 | −1 | 0 (has inbound support) | **−1** → A |
-| c2 | +3 | 0 | **+3** → A |
-| c3 | +2 | 0 | **+2** → B |
+**No second Claim** for the trophy justification.
 
-| Edge | Credit | Rebuttal? | \(E\) |
-|---|---|---|---|
-| e1 supports | +2 | no | **+2** → A |
-| e2 contradicts → c1 | +2.5 | yes (`needs_evidence`) | **+3.5** → B |
-
-No undercut (c1 has support).
+| Piece | Math |
+|---|---|
+| Claim base | \(B = +1\) |
+| Evidence unit | \(0.25 \times 0.50 \times 1.5 = 0.1875\) |
+| Unsupported? | no (Evidence attached) → \(0\) |
+| Claim total | \(1 + 0.1875 = 1.1875\) → A |
 
 \[
-\mathrm{Raw}_A = 4,\quad \mathrm{Raw}_B = 5.5
+\mathrm{Raw}_A = 1.1875,\quad \mathrm{Raw}_B = 0
+\Rightarrow \mathrm{scoreA}=100,\ \mathrm{scoreB}=0,\ \mathrm{leader}=A
 \]
+
+After async verify becomes `corroborated` + `strong`:
 
 \[
-\mathrm{ratioA} = 4/9.5 \approx 0.421 \Rightarrow \mathrm{scoreA}=42,\ \mathrm{scoreB}=58,\ \mathrm{leader}=B
+E = 1.0 \times 1.0 \times 1.5 = 1.5,\quad S = 2.5
 \]
 
-Verified by unit test `micro debate: B slightly ahead`.
+Verified by unit tests `Messi worked example`.
 
 ---
 
-## Worked proof 2 — unsupported + fallacy + undercut
+## Worked proof — counters + unsupported undercut
 
-1. `cA` speaker A, `needs_evidence`, `unsupported: true`, fallacy `strawman`, no inbound support
-2. `cB` speaker B, `counterargument`
-3. `e`: `cB -contradicts-> cA`
+1. `cA` speaker A, argument, no Evidence → unsupported  
+2. `cB` speaker B, counterargument  
+3. `r`: `cB -counters-> cA`
 
-| Claim | \(S\) |
+| Piece | Value |
 |---|---|
-| cA | −1 −1.5 −1 −1 = **−4.5** |
-| cB | **+2** |
-
-| Edge | \(E\) |
-|---|---|
-| contradicts weak | 2.5 + 1 = **3.5** → B |
-
-Undercut on cA → A **−1**.
+| cA | \(1 - 1.5 = -0.5\) |
+| cB | \(1 - 1.5 = -0.5\) (also unsupported) |
+| Relation counters | \(+2\) + rebuttal \(+1\) = **+3** → B |
+| Undercut on cA | **−1** → A |
 
 \[
-\mathrm{Raw}_A = -5.5,\quad \mathrm{Raw}_B = 5.5 \Rightarrow \mathrm{leader}=B,\ \mathrm{ratioB}=1\ (\mathrm{decisive})
+\mathrm{Raw}_A = -0.5 - 1 = -1.5,\quad \mathrm{Raw}_B = -0.5 + 3 = 2.5
 \]
-
-Verified by unit test `unsupported fallacy undercut: B decisive`.
 
 ---
 
-## Worked proof 3 — empty / UNKNOWN
+## Derived display status (not scored directly)
 
-No A/B mass → **50–50 tie**. UNKNOWN-labeled claims/edges never enter raw totals.
+`deriveClaimDisplayStatus` (see `lib/debate/status.ts`) maps attached Evidence to UI labels. Precedence when mixed:
+
+1. no Evidence → `unsupported`
+2. corroborated + strong/moderate → `supported`
+3. contested (no relevant corroboration) → `contested_evidence`
+4. corroborated + weak/irrelevant → `weak_support`
+5. pending / inconclusive / error → `pending_confirmation`
+6. only `not_verifiable` → `not_externally_verifiable`
 
 ---
 
@@ -217,24 +240,30 @@ No A/B mass → **50–50 tie**. UNKNOWN-labeled claims/edges never enter raw to
 ### `POST /api/score`
 
 ```json
-{ "claims": [...], "edges": [...] }
+{ "claims": [...], "evidence": [...], "relations": [...] }
 ```
 
-Returns raw/ratio/score fields plus `undercutA` / `undercutB`. No API key required.
+Returns `DebateScoreSnapshot` plus `undercutA` / `undercutB`.  
+Add `?debug=1` for claim/evidence/relation breakdowns.  
+No API key required. Oversized demo payloads are rejected.
 
-### `POST /api/summary`
+### `GET /api/score`
 
-Additive field `debateScore` with the same snapshot shape (FE may ignore until wired).
+Health: `deterministic score v2`.
 
 ---
 
 ## Invariants (enforced by tests)
 
 1. `scoreA + scoreB === 100` always.
-2. `ratioA + ratioB === 1` (float-safe).
-3. UNKNOWN speakers never change raw scores.
-4. Swapping all A↔B speakers swaps rawA↔rawB and mirrors ratios.
-5. Adding a `supports` edge from A never decreases `rawA`.
+2. UNKNOWN speakers never change raw scores.
+3. Swapping all A↔B speakers swaps rawA↔rawB and mirrors ratios.
+4. Evidence is never scored as a Claim node.
+5. One Evidence item’s total contribution does not multiply by target count.
+6. Irrelevant corroborated Evidence contributes \(0\).
+7. Unsupported penalty applies at most once per Claim.
+8. Fallacy penalty capped at −3.
+9. Counterargument nature does not double-count attack credit.
 
 ---
 
@@ -246,5 +275,6 @@ Additive field `debateScore` with the same snapshot shape (FE may ignore until w
 | `lib/score/debateScore.ts` | Formula implementation |
 | `lib/score/index.ts` | Public exports |
 | `lib/score/debateScore.test.ts` | Unit proofs |
+| `lib/debate/status.ts` | Support / display derivation |
 | `app/api/score/route.ts` | HTTP surface |
 | `docs/DEBATE_SCORING.md` | This document |

@@ -1,53 +1,65 @@
 /**
- * Deterministic debate scoring from the claim/edge graph.
+ * Deterministic debate scoring from Claims + Evidence + Relations (v2).
  *
  * Speaker labels come from Gemini STT/diarization → extract.
  * This module does NOT call Gemini — pure graph math.
  *
- * Spec + worked proofs: docs/DEBATE_SCORING.md
+ * Spec + Messi worked proof: docs/DEBATE_SCORING.md
  */
 
+import { deriveSpeakerSupport } from "@/lib/debate/status";
 import {
-  CLAIM_BASE,
+  CLAIM_NATURE_BASE,
   DECISIVE_LEADER_SHARE,
-  EDGE_CREDIT,
-  EDGE_REBUTTAL_BONUS,
+  EVIDENCE_NEGATIVE_FLOOR,
+  EVIDENCE_POSITIVE_CAP,
+  EVIDENCE_UNIT_MULTIPLIER,
   PENALTY_FALLACY_CAP,
-  PENALTY_NEEDS_EVIDENCE_NO_SUPPORT,
   PENALTY_PER_FALLACY,
   PENALTY_UNSUPPORTED,
+  RELATION_CREDIT,
+  RELATION_REBUTTAL_BONUS,
+  RELEVANCE_WEIGHT,
   UNDERCUT_PENALTY,
+  VERIFICATION_WEIGHT,
 } from "@/lib/score/constants";
-import type { Claim, Edge, SpeakerId } from "@/lib/types/debate";
+import type {
+  Claim,
+  DebateScoreSnapshot,
+  Evidence,
+  Relation,
+  SpeakerId,
+} from "@/lib/types/debate";
 
-export type ScoreLeader = "A" | "B" | "tied";
+export type ScoreLeader = DebateScoreSnapshot["leader"];
 
-export type DebateScoreResult = {
-  rawA: number;
-  rawB: number;
+export type DebateScoreResult = DebateScoreSnapshot & {
   /** Non-negative masses used for ratio (after floor shift). */
   massA: number;
   massB: number;
-  ratioA: number;
-  ratioB: number;
-  /** Display scores 0–100 that sum to 100 (50–50 if tied empty). */
-  scoreA: number;
-  scoreB: number;
-  leader: ScoreLeader;
-  leaderShare: number;
-  isDecisive: boolean;
 };
 
 export type ClaimScoreBreakdown = {
   claimId: string;
   speaker: SpeakerId;
   base: number;
-  penalties: number;
+  evidenceContribution: number;
+  unsupportedPenalty: number;
+  fallacyPenalty: number;
   total: number;
 };
 
-export type EdgeScoreBreakdown = {
-  edgeId: string;
+export type EvidenceScoreBreakdown = {
+  evidenceId: string;
+  /** Per-target share before claim-level clamp */
+  unitTotal: number;
+  targetCount: number;
+  perTargetShare: number;
+  supportsClaimIds: string[];
+};
+
+export type RelationScoreBreakdown = {
+  relationId: string;
   speaker: SpeakerId;
   credit: number;
   rebuttalBonus: number;
@@ -56,7 +68,8 @@ export type EdgeScoreBreakdown = {
 
 export type DebateScoreBreakdown = DebateScoreResult & {
   claimScores: ClaimScoreBreakdown[];
-  edgeScores: EdgeScoreBreakdown[];
+  evidenceScores: EvidenceScoreBreakdown[];
+  relationScores: RelationScoreBreakdown[];
   undercutA: number;
   undercutB: number;
 };
@@ -65,96 +78,158 @@ function isScoredSpeaker(s: SpeakerId): s is "A" | "B" {
   return s === "A" || s === "B";
 }
 
-function inboundSupportIds(edges: Edge[]): Set<string> {
-  return new Set(edges.filter((e) => e.type === "supports").map((e) => e.to));
-}
-
-/**
- * Soft penalties for one claim (non-positive number).
- */
-export function claimPenalties(
-  claim: Claim,
-  hasInboundSupport: boolean,
-): number {
-  let p = 0;
-  if (claim.unsupported) p -= PENALTY_UNSUPPORTED;
-  if (claim.type === "needs_evidence" && !hasInboundSupport) {
-    p -= PENALTY_NEEDS_EVIDENCE_NO_SUPPORT;
-  }
-  const fallacyCount = claim.fallacies?.length ?? 0;
-  if (fallacyCount > 0) {
-    p -= Math.min(PENALTY_FALLACY_CAP, fallacyCount * PENALTY_PER_FALLACY);
-  }
-  return p;
-}
-
-/** S_claim(c) = B(c) + P(c) */
-export function scoreClaim(
-  claim: Claim,
-  hasInboundSupport: boolean,
-): ClaimScoreBreakdown {
-  const base = CLAIM_BASE[claim.type];
-  const penalties = claimPenalties(claim, hasInboundSupport);
-  return {
-    claimId: claim.id,
-    speaker: claim.speaker,
-    base,
-    penalties,
-    total: base + penalties,
-  };
-}
-
-function isWeakClaim(claim: Claim): boolean {
+/** Raw unit for one Evidence item before splitting across targets. */
+export function evidenceUnit(evidence: Evidence): number {
+  const { status, relevance } = evidence.verification;
   return (
-    claim.unsupported === true ||
-    claim.type === "needs_evidence"
+    VERIFICATION_WEIGHT[status] *
+    RELEVANCE_WEIGHT[relevance] *
+    EVIDENCE_UNIT_MULTIPLIER
   );
 }
 
 /**
+ * Soft penalties for one claim (unsupported + fallacies).
+ * Unsupported is applied only when no Evidence references the claim.
+ */
+export function claimPenalties(
+  claim: Claim,
+  evidence: Evidence[],
+): { unsupportedPenalty: number; fallacyPenalty: number } {
+  const support = deriveSpeakerSupport(claim.id, evidence);
+  const unsupportedPenalty =
+    support === "unsupported" ? -PENALTY_UNSUPPORTED : 0;
+
+  const fallacyCount = claim.fallacies?.length ?? 0;
+  const fallacyPenalty =
+    fallacyCount > 0
+      ? -Math.min(PENALTY_FALLACY_CAP, fallacyCount * PENALTY_PER_FALLACY)
+      : 0;
+
+  return { unsupportedPenalty, fallacyPenalty };
+}
+
+function clampEvidenceContribution(sum: number): number {
+  return Math.min(
+    EVIDENCE_POSITIVE_CAP,
+    Math.max(EVIDENCE_NEGATIVE_FLOOR, sum),
+  );
+}
+
+/**
+ * Score one Claim: nature base + clamped evidence share + penalties.
+ * Evidence is never scored as a Claim.
+ */
+export function scoreClaim(
+  claim: Claim,
+  evidence: Evidence[],
+  evidenceShareByClaim: Map<string, number>,
+): ClaimScoreBreakdown {
+  const base = CLAIM_NATURE_BASE[claim.nature];
+  const evidenceContribution = clampEvidenceContribution(
+    evidenceShareByClaim.get(claim.id) ?? 0,
+  );
+  const { unsupportedPenalty, fallacyPenalty } = claimPenalties(
+    claim,
+    evidence,
+  );
+  return {
+    claimId: claim.id,
+    speaker: claim.speaker,
+    base,
+    evidenceContribution,
+    unsupportedPenalty,
+    fallacyPenalty,
+    total: base + evidenceContribution + unsupportedPenalty + fallacyPenalty,
+  };
+}
+
+/**
+ * Split each Evidence item's unit evenly across supportsClaimIds,
+ * then accumulate per Claim (clamp applied later in scoreClaim).
+ */
+export function accumulateEvidenceShares(evidence: Evidence[]): {
+  shareByClaim: Map<string, number>;
+  evidenceScores: EvidenceScoreBreakdown[];
+} {
+  const shareByClaim = new Map<string, number>();
+  const evidenceScores: EvidenceScoreBreakdown[] = [];
+
+  for (const item of evidence) {
+    const targets = [...new Set(item.supportsClaimIds)];
+    if (targets.length === 0) continue;
+
+    const unitTotal = evidenceUnit(item);
+    const perTargetShare = unitTotal / targets.length;
+
+    evidenceScores.push({
+      evidenceId: item.id,
+      unitTotal,
+      targetCount: targets.length,
+      perTargetShare,
+      supportsClaimIds: targets,
+    });
+
+    for (const claimId of targets) {
+      shareByClaim.set(
+        claimId,
+        (shareByClaim.get(claimId) ?? 0) + perTargetShare,
+      );
+    }
+  }
+
+  return { shareByClaim, evidenceScores };
+}
+
+/**
  * Full structural score for speakers A and B.
- * Claims/edges with speaker UNKNOWN contribute nothing.
+ * Claims / Evidence / Relations with speaker UNKNOWN contribute nothing
+ * (Evidence credit rides on the Claim speaker after split).
  */
 export function computeDebateScore(
   claims: Claim[],
-  edges: Edge[],
+  evidence: Evidence[],
+  relations: Relation[],
 ): DebateScoreBreakdown {
   const byId = new Map(claims.map((c) => [c.id, c]));
-  const supported = inboundSupportIds(edges);
+  const { shareByClaim, evidenceScores } = accumulateEvidenceShares(evidence);
 
   let rawA = 0;
   let rawB = 0;
   const claimScores: ClaimScoreBreakdown[] = [];
-  const edgeScores: EdgeScoreBreakdown[] = [];
+  const relationScores: RelationScoreBreakdown[] = [];
 
   for (const claim of claims) {
-    const breakdown = scoreClaim(claim, supported.has(claim.id));
+    const breakdown = scoreClaim(claim, evidence, shareByClaim);
     claimScores.push(breakdown);
     if (claim.speaker === "A") rawA += breakdown.total;
     else if (claim.speaker === "B") rawB += breakdown.total;
   }
 
-  for (const edge of edges) {
-    const fromClaim = byId.get(edge.from);
-    const toClaim = byId.get(edge.to);
+  for (const relation of relations) {
+    const fromClaim = byId.get(relation.from);
+    const toClaim = byId.get(relation.to);
     if (!fromClaim || !isScoredSpeaker(fromClaim.speaker)) continue;
 
-    let credit = EDGE_CREDIT[edge.type];
+    let credit = RELATION_CREDIT[relation.type];
     let rebuttalBonus = 0;
 
+    const targetUnsupported =
+      toClaim != null &&
+      deriveSpeakerSupport(toClaim.id, evidence) === "unsupported";
+
     if (
-      (edge.type === "contradicts" || edge.type === "responds_to") &&
       toClaim &&
       isScoredSpeaker(toClaim.speaker) &&
       toClaim.speaker !== fromClaim.speaker &&
-      isWeakClaim(toClaim)
+      targetUnsupported
     ) {
-      rebuttalBonus = EDGE_REBUTTAL_BONUS;
+      rebuttalBonus = RELATION_REBUTTAL_BONUS;
     }
 
     const total = credit + rebuttalBonus;
-    edgeScores.push({
-      edgeId: edge.id,
+    relationScores.push({
+      relationId: relation.id,
       speaker: fromClaim.speaker,
       credit,
       rebuttalBonus,
@@ -165,19 +240,19 @@ export function computeDebateScore(
     else rawB += total;
   }
 
-  // Undercut: contradicted with no inbound support → owner loses points
+  // Undercut: counters against unsupported opponent claim → owner loses points
   let undercutA = 0;
   let undercutB = 0;
-  for (const edge of edges) {
-    if (edge.type !== "contradicts") continue;
-    const fromClaim = byId.get(edge.from);
-    const toClaim = byId.get(edge.to);
+  for (const relation of relations) {
+    if (relation.type !== "counters") continue;
+    const fromClaim = byId.get(relation.from);
+    const toClaim = byId.get(relation.to);
     if (!fromClaim || !toClaim) continue;
     if (!isScoredSpeaker(fromClaim.speaker) || !isScoredSpeaker(toClaim.speaker)) {
       continue;
     }
     if (fromClaim.speaker === toClaim.speaker) continue;
-    if (supported.has(toClaim.id)) continue;
+    if (deriveSpeakerSupport(toClaim.id, evidence) !== "unsupported") continue;
 
     if (toClaim.speaker === "A") {
       undercutA += UNDERCUT_PENALTY;
@@ -193,7 +268,8 @@ export function computeDebateScore(
   return {
     ...normalized,
     claimScores,
-    edgeScores,
+    evidenceScores,
+    relationScores,
     undercutA,
     undercutB,
   };
@@ -252,34 +328,19 @@ export function normalizeSpeakerScores(
   };
 }
 
-/** Compact payload for API / FE consumers */
+/** Compact payload for API / FE consumers (DebateScoreSnapshot). */
 export function toDebateScorePayload(
-  result: DebateScoreBreakdown,
-): DebateScoreResult {
-  const {
-    rawA,
-    rawB,
-    massA,
-    massB,
-    ratioA,
-    ratioB,
-    scoreA,
-    scoreB,
-    leader,
-    leaderShare,
-    isDecisive,
-  } = result;
+  result: DebateScoreBreakdown | DebateScoreResult,
+): DebateScoreSnapshot {
   return {
-    rawA,
-    rawB,
-    massA,
-    massB,
-    ratioA,
-    ratioB,
-    scoreA,
-    scoreB,
-    leader,
-    leaderShare,
-    isDecisive,
+    rawA: result.rawA,
+    rawB: result.rawB,
+    ratioA: result.ratioA,
+    ratioB: result.ratioB,
+    scoreA: result.scoreA,
+    scoreB: result.scoreB,
+    leader: result.leader,
+    leaderShare: result.leaderShare,
+    isDecisive: result.isDecisive,
   };
 }
